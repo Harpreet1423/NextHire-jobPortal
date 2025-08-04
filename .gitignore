@@ -23,3 +23,41 @@ dist-ssr
 *.sln
 *.sw?
 .env
+
+# Terraform
+.terraform/
+*.exe
+*.tfstate
+*.tfstate.*
+.terraform/
+crash.log
+override.tf
+override.tf.json
+*.tfvars
+*.tfvars.json
+terraform.tfvars
+
+# Docker
+*.log
+docker-compose.override.yml
+
+# AWS CLI config (never push credentials)
+~/.aws/config
+~/.aws/credentials
+
+# Jenkins
+secrets/
+jenkins_home/
+
+# IDEs
+.vscode/
+.idea/
+
+# Misc
+*.pem
+*.key
+*.crt
+*.zip
+*.tar
+*.bak
+*.swp
