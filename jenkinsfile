@@ -7,7 +7,7 @@ pipeline {
         IMAGE_TAG = "build-${BUILD_NUMBER}"
         SONAR_HOST_URL = 'http://localhost:9000'
         SONAR_PROJECT_KEY = 'NextHire-jobPortal'
-        SONAR_TOKEN = credentials('sonar_token') // Jenkins credential id
+        SONAR_TOKEN = credentials('SonarQube Token') // Jenkins credential id
     }
 
     stages {
