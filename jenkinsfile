@@ -18,42 +18,40 @@ pipeline {
                 git branch: 'main', url: 'https://github.com/Harpreet1423/NextHire-jobPortal.git'
             }
         }
-
-        stage('SonarQube Analysis') {
-            steps {
-                withSonarQubeEnv('sonarqube') {
-                    script {
-                        def scannerHome = tool name: 'SonarScannerDefault', type: 'hudson.plugins.sonar.SonarRunnerInstallation'
-                        bat """
-                            "${scannerHome}\\bin\\sonar-scanner.bat" ^
-                            -Dsonar.projectKey=%SONAR_PROJECT_KEY% ^
-                            -Dsonar.sources=. ^
-                            -Dsonar.host.url=%SONAR_HOST_URL% ^
-                            -Dsonar.login=%SONAR_TOKEN%
-                        """
-                    }
-                }
+stage('SonarQube Analysis') {
+    steps {
+        withSonarQubeEnv('sonarqube') {
+            script {
+                def scannerHome = tool name: 'SonarScannerDefault', type: 'hudson.plugins.sonar.SonarRunnerInstallation'
+                bat """
+                    "${scannerHome}\\bin\\sonar-scanner.bat" ^
+                    -Dsonar.projectKey=%SONAR_PROJECT_KEY% ^
+                    -Dsonar.sources=. ^
+                    -Dsonar.host.url=%SONAR_HOST_URL% ^
+                    -Dsonar.login=%SONAR_TOKEN%
+                """
             }
         }
+    }
+}
 
         
-        stage('Snyk Security Scan') {
-            steps {
-                script {
-                    // Install Snyk CLI if not installed globally
-                    bat 'npm install -g snyk'
+       stage('Snyk Security Scan') {
+    steps {
+        script {
+            // Install Snyk CLI
+            bat 'npm install -g snyk'
 
-                    // Authenticate Snyk CLI
-                    bat 'snyk auth $SNYK_TOKEN'
+            // No interactive auth. Snyk picks token from SNYK_TOKEN env var.
+            // Run tests in non-interactive CI mode:
+            bat 'snyk test --all-projects --ci'
 
-                    // Run Snyk test
-                    bat 'snyk test'
-
-                    // Optional: Monitor and push to Snyk dashboard
-                    bat 'snyk monitor'
-                }
-            }
+            // Optional: send a snapshot to Snyk dashboard
+            bat 'snyk monitor --all-projects'
         }
+    }
+}
+
     
 
         stage('Terraform - Provision Infra') {
