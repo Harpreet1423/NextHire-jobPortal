@@ -52,7 +52,7 @@ pipeline {
                     credentialsId: 'aws-creds'
                 ]]) {
                     dir('terraform') {
-                        bat 'terraform init'
+                        bat 'terraform init -upgrade'
                         bat 'terraform import aws_ecr_repository.job_portal job-portal || echo "Repo already managed by Terraform."'
                         bat 'terraform plan'
                         bat 'terraform apply -auto-approve'
