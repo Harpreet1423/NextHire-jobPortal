@@ -34,9 +34,15 @@ pipeline {
     }
 }
 
+    bat 'dir package-lock.json'
+    bat 'type package-lock.json'
+
+
+
 
         stage('Snyk SCA') {
             steps {
+                bat 'npm install'
                 bat 'snyk test'
             }
         }
