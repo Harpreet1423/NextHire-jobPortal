@@ -36,14 +36,25 @@ pipeline {
             }
         }
 
-        stage('Snyk SCA') {
+         stages {
+        stage('Snyk Security Scan') {
             steps {
-                withCredentials([string(credentialsId: 'snyk-auth-token', variable: 'SNYK_TOKEN')]) {
-                    bat 'npm install'
-                    bat 'snyk test'
+                script {
+                    // Install Snyk CLI if not installed globally
+                    sh 'npm install -g snyk'
+
+                    // Authenticate Snyk CLI
+                    sh 'snyk auth $SNYK_TOKEN'
+
+                    // Run Snyk test
+                    sh 'snyk test'
+
+                    // Optional: Monitor and push to Snyk dashboard
+                    sh 'snyk monitor'
                 }
             }
         }
+    }
 
         stage('Terraform - Provision Infra') {
             steps {
