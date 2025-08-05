@@ -53,7 +53,7 @@ pipeline {
                 ]]) {
                     dir('terraform') {
                         bat 'terraform init -upgrade'
-                        bat 'terraform import aws_ecr_repository.job_portal job-portal || echo "Repo already managed by Terraform."'
+                        bat 'aws ecr describe-repositories --repository-names job-portal'
                         bat 'terraform plan'
                         bat 'terraform apply -auto-approve'
                     }
