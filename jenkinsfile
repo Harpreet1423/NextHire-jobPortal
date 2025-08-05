@@ -12,12 +12,13 @@ pipeline {
     }
 
     stages {
+
         stage('Checkout Code') {
             steps {
                 git branch: 'main', url: 'https://github.com/Harpreet1423/NextHire-jobPortal.git'
             }
         }
-// SONARQUBE
+
         stage('SonarQube Analysis') {
             steps {
                 withSonarQubeEnv('sonarqube') {
@@ -28,7 +29,7 @@ pipeline {
                             -Dsonar.projectKey=${env.SONAR_PROJECT_KEY} ^
                             -Dsonar.sources=. ^
                             -Dsonar.host.url=${env.SONAR_HOST_URL} ^
-                            -Dsonar.login=${env.SONAR_TOKEN}
+                            -Dsonar.login=${env.SONAR_TOKEN}"
                         """
                     }
                 }
@@ -53,7 +54,6 @@ pipeline {
                 ]]) {
                     dir('terraform') {
                         bat 'terraform init -upgrade'
-                        bat 'aws ecr describe-repositories --repository-names job-portal'
                         bat 'terraform plan'
                         bat 'terraform apply -auto-approve'
                     }
@@ -63,63 +63,42 @@ pipeline {
 
         stage('Docker Build') {
             steps {
-               bat "docker build -t app:${IMAGE_TAG} -f ./<path>/Dockerfile ."
+                // Replace <path> with actual path to your Dockerfile if needed, or use '.' if it's at root
+                bat "docker build -t app:${IMAGE_TAG} -f Dockerfile ."
             }
         }
-
-        // stage('Trivy Scan') {
-        //     steps {
-        //         bat "trivy image app:${IMAGE_TAG}"
-        //     }
-        // }
 
         stage('Push to ECR') {
             steps {
-                bat """
-                    aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${ECR_REPO}
-                    docker tag app:${IMAGE_TAG} ${ECR_REPO}:latest
-                    docker push ${ECR_REPO}:latest
-                """
+                withCredentials([[
+                    $class: 'AmazonWebServicesCredentialsBinding',
+                    accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                    secretKeyVariable: 'AWS_SECRET_ACCESS_KEY',
+                    credentialsId: 'aws-creds'
+                ]]) {
+                    bat """
+                        aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${ECR_REPO}
+                        docker tag app:${IMAGE_TAG} ${ECR_REPO}:latest
+                        docker push ${ECR_REPO}:latest
+                    """
+                }
             }
         }
 
-       stage('Deploy to Staging ECS') {
-    steps {
-        withCredentials([[
-            $class: 'AmazonWebServicesCredentialsBinding',
-            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY',
-            credentialsId: 'aws-creds'
-        ]]) {
-            bat 'aws ecs update-service --cluster job-portal-cluster --service staging-service --force-new-deployment'
+        stage('Deploy to Staging ECS') {
+            steps {
+                withCredentials([[
+                    $class: 'AmazonWebServicesCredentialsBinding',
+                    accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                    secretKeyVariable: 'AWS_SECRET_ACCESS_KEY',
+                    credentialsId: 'aws-creds'
+                ]]) {
+                    bat 'aws ecs update-service --cluster job-portal-cluster --service staging-service --force-new-deployment'
+                }
+            }
         }
-    }
-}
-
-        // stage('OWASP ZAP DAST') {
-        //     steps {
-        //         bat '''
-        //             zap-cli start
-        //             zap-cli open-url http://staging-url
-        //             zap-cli quick-scan http://staging-url
-        //         '''
-        //     }
-        // }
-
-        // stage('Deploy to Production ECS') {
-        //     steps {
-        //         bat 'aws ecs update-service --cluster job-portal-cluster --service prod-service --force-new-deployment'
-        //     }
-        // }
-
-        // stage('Fetch Secrets') {
-        //     steps {
-        //         bat 'aws secretsmanager get-secret-value --secret-id my-secret-id'
-        //     }
-        // }
 
     }
-    
 
     post {
         always {
@@ -131,3 +110,141 @@ pipeline {
         }
     }
 }
+
+
+
+
+
+// pipeline {
+//     agent any
+
+//     environment {
+//         AWS_DEFAULT_REGION = 'us-east-1'
+//         ECR_REPO = '345376996795.dkr.ecr.us-east-1.amazonaws.com/job-portal'
+//         IMAGE_TAG = "build-${BUILD_NUMBER}"
+//         SONAR_HOST_URL = 'http://localhost:9000'
+//         SONAR_PROJECT_KEY = 'NextHire-jobPortal'
+//         SONAR_TOKEN = credentials('sonar-auth-token')
+//         SNYK_TOKEN = credentials('SNYK_TOKEN')
+//     }
+
+//     stages {
+//         stage('Checkout Code') {
+//             steps {
+//                 git branch: 'main', url: 'https://github.com/Harpreet1423/NextHire-jobPortal.git'
+//             }
+//         }
+// // SONARQUBE
+//         stage('SonarQube Analysis') {
+//             steps {
+//                 withSonarQubeEnv('sonarqube') {
+//                     script {
+//                         def scannerHome = tool name: 'SonarScannerDefault', type: 'hudson.plugins.sonar.SonarRunnerInstallation'
+//                         bat """
+//                             "${scannerHome}\\bin\\sonar-scanner.bat" ^
+//                             -Dsonar.projectKey=${env.SONAR_PROJECT_KEY} ^
+//                             -Dsonar.sources=. ^
+//                             -Dsonar.host.url=${env.SONAR_HOST_URL} ^
+//                             -Dsonar.login=${env.SONAR_TOKEN}
+//                         """
+//                     }
+//                 }
+//             }
+//         }
+
+//         stage('Snyk Security Scan') {
+//             steps {
+//                 bat 'npm install -g snyk'
+//                 bat 'snyk test --all-projects --ci'
+//                 bat 'snyk monitor --all-projects'
+//             }
+//         }
+
+//         stage('Terraform - Provision Infra') {
+//             steps {
+//                 withCredentials([[
+//                     $class: 'AmazonWebServicesCredentialsBinding',
+//                     accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+//                     secretKeyVariable: 'AWS_SECRET_ACCESS_KEY',
+//                     credentialsId: 'aws-creds'
+//                 ]]) {
+//                     dir('terraform') {
+//                         bat 'terraform init -upgrade'
+//                         bat 'aws ecr describe-repositories --repository-names job-portal'
+//                         bat 'terraform plan'
+//                         bat 'terraform apply -auto-approve'
+//                     }
+//                 }
+//             }
+//         }
+
+//         stage('Docker Build') {
+//             steps {
+//                bat "docker build -t app:${IMAGE_TAG} -f ./<path>/Dockerfile ."
+//             }
+//         }
+
+//         stage('Trivy Scan') {
+//             steps {
+//                 bat "trivy image app:${IMAGE_TAG}"
+//             }
+//         }
+
+//         stage('Push to ECR') {
+//             steps {
+//                 bat """
+//                     aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${ECR_REPO}
+//                     docker tag app:${IMAGE_TAG} ${ECR_REPO}:latest
+//                     docker push ${ECR_REPO}:latest
+//                 """
+//             }
+//         }
+
+//        stage('Deploy to Staging ECS') {
+//     steps {
+//         withCredentials([[
+//             $class: 'AmazonWebServicesCredentialsBinding',
+//             accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+//             secretKeyVariable: 'AWS_SECRET_ACCESS_KEY',
+//             credentialsId: 'aws-creds'
+//         ]]) {
+//             bat 'aws ecs update-service --cluster job-portal-cluster --service staging-service --force-new-deployment'
+//         }
+//     }
+// }
+
+//         stage('OWASP ZAP DAST') {
+//             steps {
+//                 bat '''
+//                     zap-cli start
+//                     zap-cli open-url http://staging-url
+//                     zap-cli quick-scan http://staging-url
+//                 '''
+//             }
+//         }
+
+//         stage('Deploy to Production ECS') {
+//             steps {
+//                 bat 'aws ecs update-service --cluster job-portal-cluster --service prod-service --force-new-deployment'
+//             }
+//         }
+
+//         stage('Fetch Secrets') {
+//             steps {
+//                 bat 'aws secretsmanager get-secret-value --secret-id my-secret-id'
+//             }
+//         }
+
+//     }
+    
+
+//     post {
+//         always {
+//             echo 'Pipeline finished.'
+//             cleanWs()
+//         }
+//         failure {
+//             echo 'Pipeline failed! Investigate logs and try again.'
+//         }
+//     }
+// }
