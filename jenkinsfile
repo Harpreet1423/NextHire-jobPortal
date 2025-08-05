@@ -56,10 +56,14 @@ stage('SonarQube Analysis') {
         stage('Terraform - Provision Infra') {
         steps {
             // Bind credentials to env vars for this block
-           withCredentials([aws(accessKeyVariable: 'AWS_ACCESS_KEY_ID', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY', credentialsId: 'aws-creds')]) {
+           withCredentials([[$class: 'AmazonWebServicesCredentialsBinding',
+  accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+  secretKeyVariable: 'AWS_SECRET_ACCESS_KEY',
+  credentialsId: 'aws-creds']]) {
             dir('terraform') {
                 // Non-interactive flags and no-color for clean CI logs
                 bat 'terraform init'
+                bat 'terraform import aws_iam_role.ecs_task_execution_role ecsTaskExecutionRole'
                 bat 'terraform plan'
                 bat 'terraform apply -auto-approve'
             }
