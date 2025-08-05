@@ -11,7 +11,8 @@ resource "aws_ecr_repository" "job_portal" {
   }
 
   lifecycle {
-    ignore_changes = all
+    prevent_destroy = true         # optional, protects against accidental deletion
+    ignore_changes  = [tags]       # only ignore tags, not everything!
   }
 }
 
@@ -34,15 +35,6 @@ resource "aws_iam_role" "ecs_task_execution_role" {
       }
     ]
   })
-}
-
-terraform {
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 6.7.0"
-    }
-  }
 }
 
 
