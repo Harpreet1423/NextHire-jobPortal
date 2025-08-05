@@ -65,6 +65,5 @@ jenkins_home/
 
 # SonarQube
 .sonar/
-sonar-project.properties
 .env
 *.sh   # if your script files contain secrets
