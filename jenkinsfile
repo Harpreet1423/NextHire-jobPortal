@@ -53,14 +53,20 @@ stage('SonarQube Analysis') {
 }
 
     
-
         stage('Terraform - Provision Infra') {
-            steps {
-                dir('terraform') {
-                    bat 'terraform init'
-                    bat 'terraform apply -auto-approve'
-                }
+        steps {
+            // Bind credentials to env vars for this block
+            withCredentials([usernamePassword(credentialsId: 'aws-creds',
+                            usernameVariable: 'AWS_ACCESS_KEY_ID',
+                            passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+            dir('terraform') {
+                // Non-interactive flags and no-color for clean CI logs
+                bat 'terraform init -input=false -no-color'
+                bat 'terraform plan -input=false -no-color -out=tfplan'
+                bat 'terraform apply -input=false -no-color tfplan'
             }
+            }
+        }
         }
 
         stage('Docker Build') {
