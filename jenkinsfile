@@ -5,7 +5,6 @@ pipeline {
         AWS_DEFAULT_REGION = 'us-east-1'
         ECR_REPO = '345376996795.dkr.ecr.us-east-1.amazonaws.com/job-portal'
         IMAGE_TAG = "build-${BUILD_NUMBER}"
-        SONARQUBE = credentials('SonarQube Token') // Make sure this exists in Jenkins credentials
     }
 
     stages {
@@ -17,9 +16,6 @@ pipeline {
         }
 
         stage('SonarQube Analysis') {
-            tools {
-                sonarQubeScanner 'SonarScannerDefault' // Tool name must match Jenkins global tool config
-            }
             steps {
                 withSonarQubeEnv('sonarqube') {
                     sh 'sonar-scanner'
@@ -29,6 +25,10 @@ pipeline {
 
         stage('Snyk SCA') {
             steps {
+                // Optional: authenticate if needed
+                // withCredentials([string(credentialsId: 'SNYK_TOKEN', variable: 'SNYK_TOKEN')]) {
+                //     sh 'snyk auth $SNYK_TOKEN'
+                // }
                 sh 'snyk test'
             }
         }
@@ -75,7 +75,11 @@ pipeline {
 
         stage('OWASP ZAP DAST') {
             steps {
-                sh 'zap-cli start && zap-cli open-url http://staging-url && zap-cli quick-scan http://staging-url'
+                // Using Docker for ZAP to avoid CLI setup issues
+                sh '''
+                    docker run -t owasp/zap2docker-stable zap-baseline.py \
+                    -t http://staging-url -r zap_report.html
+                '''
             }
         }
 
@@ -89,6 +93,16 @@ pipeline {
             steps {
                 sh 'aws secretsmanager get-secret-value --secret-id my-secret-id'
             }
+        }
+    }
+
+    post {
+        always {
+            echo 'Pipeline finished.'
+            cleanWs()
+        }
+        failure {
+            echo 'Pipeline failed! Investigate logs and try again.'
         }
     }
 }
