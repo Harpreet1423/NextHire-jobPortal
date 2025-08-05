@@ -41,16 +41,16 @@ pipeline {
             steps {
                 script {
                     // Install Snyk CLI if not installed globally
-                    sh 'npm install -g snyk'
+                    bat 'npm install -g snyk'
 
                     // Authenticate Snyk CLI
-                    sh 'snyk auth $SNYK_TOKEN'
+                    bat 'snyk auth $SNYK_TOKEN'
 
                     // Run Snyk test
-                    sh 'snyk test'
+                    bat 'snyk test'
 
                     // Optional: Monitor and push to Snyk dashboard
-                    sh 'snyk monitor'
+                    bat 'snyk monitor'
                 }
             }
         }
