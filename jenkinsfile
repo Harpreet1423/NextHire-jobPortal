@@ -97,7 +97,9 @@ pipeline {
     post {
         always {
             echo 'Pipeline finished.'
-            cleanWs()
+           node {
+                cleanWs()
+            }
         }
         failure {
             echo 'Pipeline failed! Investigate logs and try again.'
