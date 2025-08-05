@@ -17,7 +17,7 @@ pipeline {
                 git branch: 'main', url: 'https://github.com/Harpreet1423/NextHire-jobPortal.git'
             }
         }
-
+// SONARQUBE
         stage('SonarQube Analysis') {
             steps {
                 withSonarQubeEnv('sonarqube') {
@@ -63,15 +63,15 @@ pipeline {
 
         stage('Docker Build') {
             steps {
-                bat "docker build -t app:${IMAGE_TAG} ."
+               bat "docker build -t app:${IMAGE_TAG} -f ./<path>/Dockerfile ."
             }
         }
 
-        stage('Trivy Scan') {
-            steps {
-                bat "trivy image app:${IMAGE_TAG}"
-            }
-        }
+        // stage('Trivy Scan') {
+        //     steps {
+        //         bat "trivy image app:${IMAGE_TAG}"
+        //     }
+        // }
 
         stage('Push to ECR') {
             steps {
@@ -83,34 +83,43 @@ pipeline {
             }
         }
 
-        stage('Deploy to Staging ECS') {
-            steps {
-                bat 'aws ecs update-service --cluster job-portal-cluster --service staging-service --force-new-deployment'
-            }
-        }
-
-        stage('OWASP ZAP DAST') {
-            steps {
-                bat '''
-                    zap-cli start
-                    zap-cli open-url http://staging-url
-                    zap-cli quick-scan http://staging-url
-                '''
-            }
-        }
-
-        stage('Deploy to Production ECS') {
-            steps {
-                bat 'aws ecs update-service --cluster job-portal-cluster --service prod-service --force-new-deployment'
-            }
-        }
-
-        stage('Fetch Secrets') {
-            steps {
-                bat 'aws secretsmanager get-secret-value --secret-id my-secret-id'
-            }
+       stage('Deploy to Staging ECS') {
+    steps {
+        withCredentials([[
+            $class: 'AmazonWebServicesCredentialsBinding',
+            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY',
+            credentialsId: 'aws-creds'
+        ]]) {
+            bat 'aws ecs update-service --cluster job-portal-cluster --service staging-service --force-new-deployment'
         }
     }
+}
+
+        // stage('OWASP ZAP DAST') {
+        //     steps {
+        //         bat '''
+        //             zap-cli start
+        //             zap-cli open-url http://staging-url
+        //             zap-cli quick-scan http://staging-url
+        //         '''
+        //     }
+        // }
+
+        // stage('Deploy to Production ECS') {
+        //     steps {
+        //         bat 'aws ecs update-service --cluster job-portal-cluster --service prod-service --force-new-deployment'
+        //     }
+        // }
+
+        // stage('Fetch Secrets') {
+        //     steps {
+        //         bat 'aws secretsmanager get-secret-value --secret-id my-secret-id'
+        //     }
+        // }
+
+    }
+    
 
     post {
         always {
