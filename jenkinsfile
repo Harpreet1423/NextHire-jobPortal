@@ -28,7 +28,7 @@ stage('SonarQube Analysis') {
                     -Dsonar.projectKey=%SONAR_PROJECT_KEY% ^
                     -Dsonar.sources=. ^
                     -Dsonar.host.url=%SONAR_HOST_URL% ^
-                    -Dsonar.token=${SONARQUBE}
+                    -Dsonar.login=%SONAR_TOKEN%
                 """
             }
         }
