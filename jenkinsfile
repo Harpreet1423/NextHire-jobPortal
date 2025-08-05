@@ -5,8 +5,11 @@ pipeline {
         AWS_DEFAULT_REGION = 'us-east-1'
         ECR_REPO = '345376996795.dkr.ecr.us-east-1.amazonaws.com/job-portal'
         IMAGE_TAG = "build-${BUILD_NUMBER}"
+        SONARQUBE = credentials('SonarQube Token') // from Jenkins credentials
     }
+    
 
+     
     stages {
         stage('Checkout Code') {
             steps {
@@ -15,13 +18,19 @@ pipeline {
         }
 
 
-        stage('SonarQube SAST') {
+       tools {
+        sonarQubeScanner 'SonarScannerDefault'  // This must match the name of the scanner tool you installed
+    }
+
+    stages {
+        stage('SonarQube Analysis') {
             steps {
                 withSonarQubeEnv('sonarqube') {
-                    sh 'sonar-scanner -Dsonar.projectKey=fintech-app'
+                    sh 'sonar-scanner'
                 }
             }
         }
+    }
 
 
         stage('Snyk SCA') {
