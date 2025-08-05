@@ -5,37 +5,31 @@ pipeline {
         AWS_DEFAULT_REGION = 'us-east-1'
         ECR_REPO = '345376996795.dkr.ecr.us-east-1.amazonaws.com/job-portal'
         IMAGE_TAG = "build-${BUILD_NUMBER}"
-        SONARQUBE = credentials('SonarQube Token') // from Jenkins credentials
+        SONARQUBE = credentials('SonarQube Token') // Make sure this exists in Jenkins credentials
     }
-    
 
-     
     stages {
+
         stage('Checkout Code') {
             steps {
                 git branch: 'main', url: 'https://github.com/Harpreet1423/NextHire-jobPortal.git'
             }
         }
 
-
-       tools {
-        sonarQubeScanner 'SonarScannerDefault'  // This must match the name of the scanner tool you installed
-    }
-
-    stages {
         stage('SonarQube Analysis') {
+            tools {
+                sonarQubeScanner 'SonarScannerDefault' // Tool name must match Jenkins global tool config
+            }
             steps {
                 withSonarQubeEnv('sonarqube') {
                     sh 'sonar-scanner'
                 }
             }
         }
-    }
-
 
         stage('Snyk SCA') {
             steps {
-                sh 'snyk'
+                sh 'snyk test'
             }
         }
 
@@ -64,10 +58,10 @@ pipeline {
             steps {
                 script {
                     sh """
-                    aws ecr get-login-password --region $AWS_DEFAULT_REGION \
+                        aws ecr get-login-password --region $AWS_DEFAULT_REGION \
                         | docker login --username AWS --password-stdin $ECR_REPO
-                    docker tag app:${IMAGE_TAG} $ECR_REPO:latest
-                    docker push $ECR_REPO:latest
+                        docker tag app:${IMAGE_TAG} $ECR_REPO:latest
+                        docker push $ECR_REPO:latest
                     """
                 }
             }
