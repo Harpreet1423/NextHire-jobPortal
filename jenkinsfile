@@ -54,7 +54,7 @@ stage('SonarQube Analysis') {
 
     
         stage('Terraform - Provision Infra') {
-  steps {
+        steps {
     withCredentials([[$class: 'AmazonWebServicesCredentialsBinding',
       accessKeyVariable: 'AWS_ACCESS_KEY_ID',
       secretKeyVariable: 'AWS_SECRET_ACCESS_KEY',
@@ -66,32 +66,31 @@ stage('SonarQube Analysis') {
         // Use PowerShell to check for existing ECR repo and import if present,
         // but don't fail if repo is not present.
         powershell """
-        $ErrorActionPreference = 'Stop'
+        \$ErrorActionPreference = 'Stop'
 
         # Export AWS creds to env for aws CLI used inside powershell
-        $env:AWS_ACCESS_KEY_ID = '${env.AWS_ACCESS_KEY_ID}'
-        $env:AWS_SECRET_ACCESS_KEY = '${env.AWS_SECRET_ACCESS_KEY}'
-        $env:AWS_DEFAULT_REGION = '${env.AWS_DEFAULT_REGION}'
+        \$env:AWS_ACCESS_KEY_ID = '${env.AWS_ACCESS_KEY_ID}'
+        \$env:AWS_SECRET_ACCESS_KEY = '${env.AWS_SECRET_ACCESS_KEY}'
+        \$env:AWS_DEFAULT_REGION = '${env.AWS_DEFAULT_REGION}'
 
         Write-Host "Checking if ECR repository 'job-portal' exists..."
         try {
-          aws ecr describe-repositories --repository-names job-portal --region $env:AWS_DEFAULT_REGION > $null 2>&1
-          $repoExists = $LASTEXITCODE -eq 0
+          aws ecr describe-repositories --repository-names job-portal --region \$env:AWS_DEFAULT_REGION > \$null 2>&1
+          \$repoExists = \$LASTEXITCODE -eq 0
         } catch {
-          $repoExists = $false
+          \$repoExists = \$false
         }
 
-        if ($repoExists) {
+        if (\$repoExists) {
           Write-Host "ECR repo exists — attempting terraform import (safe if already imported)."
           # Only try to import when the resource is not already in state.
-          $inState = (terraform state list -no-color 2>$null) -contains 'aws_ecr_repository.job_portal'
-          if (-not $inState) {
-            # Import and allow a non-zero import to fail the import only if critical; catch to continue
+          \$inState = (terraform state list -no-color 2>\$null) -contains 'aws_ecr_repository.job_portal'
+          if (-not \$inState) {
             try {
               terraform import -no-color aws_ecr_repository.job_portal job-portal
               Write-Host "Import completed."
             } catch {
-              Write-Warning "terraform import failed: $($_.Exception.Message) - continuing to plan"
+              Write-Warning "terraform import failed: \$($_.Exception.Message) - continuing to plan"
             }
           } else {
             Write-Host "Resource already in terraform state - skipping import"
