@@ -5,6 +5,9 @@ pipeline {
         AWS_DEFAULT_REGION = 'us-east-1'
         ECR_REPO = '345376996795.dkr.ecr.us-east-1.amazonaws.com/job-portal'
         IMAGE_TAG = "build-${BUILD_NUMBER}"
+        SONAR_HOST_URL = 'http://localhost:9000'
+        SONAR_PROJECT_KEY = 'NextHire-jobPortal'
+        SONAR_TOKEN = credentials('sonar_token') // Jenkins credential id
     }
 
     stages {
@@ -15,14 +18,19 @@ pipeline {
             }
         }
 
-       stage('SonarQube Analysis') {
-    steps {
-        withSonarQubeEnv('sonarqube') {
-            bat 'sonar-scanner -Dsonar.projectKey=NextHire-jobPortal -Dsonar.sources=. -Dsonar.host.url=http://localhost:9000 -Dsonar.login=$SONAR_TOKEN'
+        stage('SonarQube Analysis') {
+            steps {
+                withSonarQubeEnv('sonarqube') {
+                    bat """
+                        sonar-scanner ^
+                        -Dsonar.projectKey=%SONAR_PROJECT_KEY% ^
+                        -Dsonar.sources=. ^
+                        -Dsonar.host.url=%SONAR_HOST_URL% ^
+                        -Dsonar.login=%SONAR_TOKEN%
+                    """
+                }
+            }
         }
-    }
-}
-
 
         stage('Snyk SCA') {
             steps {
@@ -41,26 +49,23 @@ pipeline {
 
         stage('Docker Build') {
             steps {
-                bat "docker build -t app:${IMAGE_TAG} ."
+                bat "docker build -t app:%IMAGE_TAG% ."
             }
         }
 
         stage('Trivy Scan') {
             steps {
-                bat "trivy image app:${IMAGE_TAG}"
+                bat "trivy image app:%IMAGE_TAG%"
             }
         }
 
         stage('Push to ECR') {
             steps {
-                script {
-                    bat """
-                        aws ecr get-login-password --region $AWS_DEFAULT_REGION \
-                        | docker login --username AWS --password-stdin $ECR_REPO
-                        docker tag app:${IMAGE_TAG} $ECR_REPO:latest
-                        docker push $ECR_REPO:latest
-                    """
-                }
+                bat """
+                    aws ecr get-login-password --region %AWS_DEFAULT_REGION% | docker login --username AWS --password-stdin %ECR_REPO%
+                    docker tag app:%IMAGE_TAG% %ECR_REPO%:latest
+                    docker push %ECR_REPO%:latest
+                """
             }
         }
 
@@ -88,7 +93,8 @@ pipeline {
             }
         }
     }
-     post {
+
+    post {
         always {
             echo 'Pipeline finished.'
             cleanWs()
@@ -98,8 +104,3 @@ pipeline {
         }
     }
 }
-
-
-
-    
-   
