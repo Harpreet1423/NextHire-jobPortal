@@ -61,4 +61,10 @@ jenkins_home/
 *.tar
 *.bak
 *.swp
+
+
+# SonarQube
+.sonar/
 sonar-project.properties
+.env
+*.sh   # if your script files contain secrets
