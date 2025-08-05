@@ -60,13 +60,24 @@ stage('SonarQube Analysis') {
   accessKeyVariable: 'AWS_ACCESS_KEY_ID',
   secretKeyVariable: 'AWS_SECRET_ACCESS_KEY',
   credentialsId: 'aws-creds']]) {
+            // dir('terraform') {
+            //     // Non-interactive flags and no-color for clean CI logs
+            //     bat 'terraform init'
+            //     bat 'terraform import aws_iam_role.ecs_task_execution_role ecsTaskExecutionRole'
+            //     bat 'terraform plan'
+            //     bat 'terraform apply -auto-approve'
+            // }
             dir('terraform') {
-                // Non-interactive flags and no-color for clean CI logs
-                bat 'terraform init'
-                bat 'terraform import aws_iam_role.ecs_task_execution_role ecsTaskExecutionRole'
-                bat 'terraform plan'
-                bat 'terraform apply -auto-approve'
-            }
+  bat 'terraform init -no-color'
+  powershell '''
+  $env:AWS_DEFAULT_REGION = "${env.AWS_DEFAULT_REGION}"
+  if (aws ecr describe-repositories --repository-names job-portal --region $env:AWS_DEFAULT_REGION 2>$null) {
+    terraform import aws_ecr_repository.job_portal job-portal
+  }
+  '''
+  bat 'terraform plan -out=tfplan -input=false -no-color'
+  bat 'terraform apply -input=false -auto-approve tfplan'
+}
             }
         }
         }
