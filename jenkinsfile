@@ -7,12 +7,11 @@ pipeline {
         IMAGE_TAG = "build-${BUILD_NUMBER}"
         SONAR_HOST_URL = 'http://localhost:9000'
         SONAR_PROJECT_KEY = 'NextHire-jobPortal'
-        SONAR_TOKEN = credentials('sonar-auth-token') // Jenkins credential ID for SonarQube
-        SNYK_TOKEN = credentials('SNYK_TOKEN')        // Jenkins credential ID for Snyk
+        SONAR_TOKEN = credentials('sonar-auth-token')
+        SNYK_TOKEN = credentials('SNYK_TOKEN')
     }
 
     stages {
-
         stage('Checkout Code') {
             steps {
                 git branch: 'main', url: 'https://github.com/Harpreet1423/NextHire-jobPortal.git'
@@ -38,11 +37,9 @@ pipeline {
 
         stage('Snyk Security Scan') {
             steps {
-                script {
-                    bat 'npm install -g snyk'
-                    bat 'snyk test --all-projects --ci'
-                    bat 'snyk monitor --all-projects'
-                }
+                bat 'npm install -g snyk'
+                bat 'snyk test --all-projects --ci'
+                bat 'snyk monitor --all-projects'
             }
         }
 
@@ -55,18 +52,10 @@ pipeline {
                     credentialsId: 'aws-creds'
                 ]]) {
                     dir('terraform') {
-                        bat 'terraform init -no-color'
-                        
-                        // Handle ECR repo import only if it exists
-                        bat '''
-                            aws ecr describe-repositories --repository-names job-portal > nul 2>&1
-                            if %ERRORLEVEL% EQU 0 (
-                                terraform import aws_ecr_repository.job_portal job-portal
-                            )
-                        '''
-
-                        bat 'terraform plan -no-color'
-                        bat 'terraform apply -auto-approve -no-color'
+                        bat 'terraform init'
+                        bat 'terraform import aws_ecr_repository.job_portal job-portal || echo "Repo already managed by Terraform."'
+                        bat 'terraform plan'
+                        bat 'terraform apply -auto-approve'
                     }
                 }
             }
@@ -74,22 +63,22 @@ pipeline {
 
         stage('Docker Build') {
             steps {
-                bat "docker build -t app:%IMAGE_TAG% ."
+                bat "docker build -t app:${IMAGE_TAG} ."
             }
         }
 
         stage('Trivy Scan') {
             steps {
-                bat "trivy image app:%IMAGE_TAG%"
+                bat "trivy image app:${IMAGE_TAG}"
             }
         }
 
         stage('Push to ECR') {
             steps {
                 bat """
-                    aws ecr get-login-password --region %AWS_DEFAULT_REGION% | docker login --username AWS --password-stdin %ECR_REPO%
-                    docker tag app:%IMAGE_TAG% %ECR_REPO%:latest
-                    docker push %ECR_REPO%:latest
+                    aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${ECR_REPO}
+                    docker tag app:${IMAGE_TAG} ${ECR_REPO}:latest
+                    docker push ${ECR_REPO}:latest
                 """
             }
         }
@@ -102,7 +91,11 @@ pipeline {
 
         stage('OWASP ZAP DAST') {
             steps {
-                bat 'zap-cli start && zap-cli open-url http://staging-url && zap-cli quick-scan http://staging-url'
+                bat '''
+                    zap-cli start
+                    zap-cli open-url http://staging-url
+                    zap-cli quick-scan http://staging-url
+                '''
             }
         }
 
