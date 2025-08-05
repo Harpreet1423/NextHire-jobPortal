@@ -25,10 +25,6 @@ pipeline {
 
         stage('Snyk SCA') {
             steps {
-                // Optional: authenticate if needed
-                // withCredentials([string(credentialsId: 'SNYK_TOKEN', variable: 'SNYK_TOKEN')]) {
-                //     sh 'snyk auth $SNYK_TOKEN'
-                // }
                 sh 'snyk test'
             }
         }
@@ -75,11 +71,7 @@ pipeline {
 
         stage('OWASP ZAP DAST') {
             steps {
-                // Using Docker for ZAP to avoid CLI setup issues
-                sh '''
-                    docker run -t owasp/zap2docker-stable zap-baseline.py \
-                    -t http://staging-url -r zap_report.html
-                '''
+                sh 'zap-cli start && zap-cli open-url http://staging-url && zap-cli quick-scan http://staging-url'
             }
         }
 
@@ -95,8 +87,7 @@ pipeline {
             }
         }
     }
-
-    post {
+     post {
         always {
             echo 'Pipeline finished.'
             cleanWs()
@@ -106,3 +97,8 @@ pipeline {
         }
     }
 }
+
+
+
+    
+   
