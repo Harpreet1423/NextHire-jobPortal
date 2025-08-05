@@ -63,7 +63,7 @@ stage('SonarQube Analysis') {
             dir('terraform') {
                 // Non-interactive flags and no-color for clean CI logs
                 bat 'terraform init'
-                bat 'terraform import aws_iam_role.ecs_task_execution_role ecsTaskExecutionRole'
+                bat 'terraform import aws_ecr_repository.job_portal job-portal'
                 bat 'terraform plan'
                 bat 'terraform apply -auto-approve'
             }
