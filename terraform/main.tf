@@ -11,7 +11,10 @@ resource "aws_ecr_repository" "job_portal" {
   }
 
   lifecycle {
-    ignore_changes = all
+    ignore_changes = [
+    image_scanning_configuration,
+    image_tag_mutability
+  ]
   }
 }
 
