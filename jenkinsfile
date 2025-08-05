@@ -18,7 +18,7 @@ pipeline {
        stage('SonarQube Analysis') {
     steps {
         withSonarQubeEnv('sonarqube') {
-            sh 'sonar-scanner -Dsonar.projectKey=NextHire-jobPortal -Dsonar.sources=. -Dsonar.host.url=http://localhost:9000 -Dsonar.login=$SONAR_TOKEN'
+            bat 'sonar-scanner -Dsonar.projectKey=NextHire-jobPortal -Dsonar.sources=. -Dsonar.host.url=http://localhost:9000 -Dsonar.login=$SONAR_TOKEN'
         }
     }
 }
@@ -26,35 +26,35 @@ pipeline {
 
         stage('Snyk SCA') {
             steps {
-                sh 'snyk test'
+                bat 'snyk test'
             }
         }
 
         stage('Terraform - Provision Infra') {
             steps {
                 dir('terraform') {
-                    sh 'terraform init'
-                    sh 'terraform apply -auto-approve'
+                    bat 'terraform init'
+                    bat 'terraform apply -auto-approve'
                 }
             }
         }
 
         stage('Docker Build') {
             steps {
-                sh "docker build -t app:${IMAGE_TAG} ."
+                bat "docker build -t app:${IMAGE_TAG} ."
             }
         }
 
         stage('Trivy Scan') {
             steps {
-                sh "trivy image app:${IMAGE_TAG}"
+                bat "trivy image app:${IMAGE_TAG}"
             }
         }
 
         stage('Push to ECR') {
             steps {
                 script {
-                    sh """
+                    bat """
                         aws ecr get-login-password --region $AWS_DEFAULT_REGION \
                         | docker login --username AWS --password-stdin $ECR_REPO
                         docker tag app:${IMAGE_TAG} $ECR_REPO:latest
@@ -66,25 +66,25 @@ pipeline {
 
         stage('Deploy to Staging ECS') {
             steps {
-                sh 'aws ecs update-service --cluster staging-cluster --service staging-service --force-new-deployment'
+                bat 'aws ecs update-service --cluster staging-cluster --service staging-service --force-new-deployment'
             }
         }
 
         stage('OWASP ZAP DAST') {
             steps {
-                sh 'zap-cli start && zap-cli open-url http://staging-url && zap-cli quick-scan http://staging-url'
+                bat 'zap-cli start && zap-cli open-url http://staging-url && zap-cli quick-scan http://staging-url'
             }
         }
 
         stage('Deploy to Production ECS') {
             steps {
-                sh 'aws ecs update-service --cluster prod-cluster --service prod-service --force-new-deployment'
+                bat 'aws ecs update-service --cluster prod-cluster --service prod-service --force-new-deployment'
             }
         }
 
         stage('Fetch Secrets') {
             steps {
-                sh 'aws secretsmanager get-secret-value --secret-id my-secret-id'
+                bat 'aws secretsmanager get-secret-value --secret-id my-secret-id'
             }
         }
     }
