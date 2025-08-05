@@ -15,13 +15,14 @@ pipeline {
             }
         }
 
-        stage('SonarQube Analysis') {
-            steps {
-                withSonarQubeEnv('sonarqube') {
-                    sh 'sonar-scanner'
-                }
-            }
+       stage('SonarQube Analysis') {
+    steps {
+        withSonarQubeEnv('sonarqube') {
+            sh 'sonar-scanner -Dsonar.projectKey=NextHire-jobPortal -Dsonar.sources=. -Dsonar.host.url=http://localhost:9000 -Dsonar.login=$SONAR_TOKEN'
         }
+    }
+}
+
 
         stage('Snyk SCA') {
             steps {
