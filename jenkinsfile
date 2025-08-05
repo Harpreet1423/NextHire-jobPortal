@@ -8,7 +8,7 @@ pipeline {
         SONAR_HOST_URL = 'http://localhost:9000'
         SONAR_PROJECT_KEY = 'NextHire-jobPortal'
         SONAR_TOKEN = credentials('sonar-auth-token') // Jenkins credential ID for SonarQube
-        SNYK_TOKEN = credentials('SNYK_TOKEN')    // ✅ Jenkins credential ID for Snyk
+        SNYK_TOKEN = credentials('SNYK_TOKEN')        // Jenkins credential ID for Snyk
     }
 
     stages {
@@ -18,60 +18,59 @@ pipeline {
                 git branch: 'main', url: 'https://github.com/Harpreet1423/NextHire-jobPortal.git'
             }
         }
-stage('SonarQube Analysis') {
-    steps {
-        withSonarQubeEnv('sonarqube') {
-            script {
-                def scannerHome = tool name: 'SonarScannerDefault', type: 'hudson.plugins.sonar.SonarRunnerInstallation'
-                bat """
-                    "${scannerHome}\\bin\\sonar-scanner.bat" ^
-                    -Dsonar.projectKey=%SONAR_PROJECT_KEY% ^
-                    -Dsonar.sources=. ^
-                    -Dsonar.host.url=%SONAR_HOST_URL% ^
-                    -Dsonar.login=%SONAR_TOKEN%
-                """
+
+        stage('SonarQube Analysis') {
+            steps {
+                withSonarQubeEnv('sonarqube') {
+                    script {
+                        def scannerHome = tool name: 'SonarScannerDefault', type: 'hudson.plugins.sonar.SonarRunnerInstallation'
+                        bat """
+                            "${scannerHome}\\bin\\sonar-scanner.bat" ^
+                            -Dsonar.projectKey=${env.SONAR_PROJECT_KEY} ^
+                            -Dsonar.sources=. ^
+                            -Dsonar.host.url=${env.SONAR_HOST_URL} ^
+                            -Dsonar.login=${env.SONAR_TOKEN}
+                        """
+                    }
+                }
             }
         }
-    }
-}
 
-        
-       stage('Snyk Security Scan') {
-    steps {
-        script {
-            // Install Snyk CLI
-            bat 'npm install -g snyk'
-
-            // No interactive auth. Snyk picks token from SNYK_TOKEN env var.
-            // Run tests in non-interactive CI mode:
-            bat 'snyk test --all-projects --ci'
-
-            // Optional: send a snapshot to Snyk dashboard
-            bat 'snyk monitor --all-projects'
+        stage('Snyk Security Scan') {
+            steps {
+                script {
+                    bat 'npm install -g snyk'
+                    bat 'snyk test --all-projects --ci'
+                    bat 'snyk monitor --all-projects'
+                }
+            }
         }
-    }
-}
 
-    
         stage('Terraform - Provision Infra') {
-        steps {
-            // Bind credentials to env vars for this block
-           withCredentials([[$class: 'AmazonWebServicesCredentialsBinding',
-  accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-  secretKeyVariable: 'AWS_SECRET_ACCESS_KEY',
-  credentialsId: 'aws-creds']]) {
-            dir('terraform') {
-                // Non-interactive flags and no-color for clean CI logs
-                bat 'terraform init'
-                bat 'terraform import aws_ecr_repository.job_portal job-portal'
-                bat 'terraform plan'
-                bat 'terraform apply -auto-approve'
-            }
-            }
-        }
-        }
+            steps {
+                withCredentials([[
+                    $class: 'AmazonWebServicesCredentialsBinding',
+                    accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                    secretKeyVariable: 'AWS_SECRET_ACCESS_KEY',
+                    credentialsId: 'aws-creds'
+                ]]) {
+                    dir('terraform') {
+                        bat 'terraform init -no-color'
+                        
+                        // Handle ECR repo import only if it exists
+                        bat '''
+                            aws ecr describe-repositories --repository-names job-portal > nul 2>&1
+                            if %ERRORLEVEL% EQU 0 (
+                                terraform import aws_ecr_repository.job_portal job-portal
+                            )
+                        '''
 
-      
+                        bat 'terraform plan -no-color'
+                        bat 'terraform apply -auto-approve -no-color'
+                    }
+                }
+            }
+        }
 
         stage('Docker Build') {
             steps {
@@ -97,7 +96,7 @@ stage('SonarQube Analysis') {
 
         stage('Deploy to Staging ECS') {
             steps {
-                bat 'aws ecs update-service --cluster staging-cluster --service staging-service --force-new-deployment'
+                bat 'aws ecs update-service --cluster job-portal-cluster --service staging-service --force-new-deployment'
             }
         }
 
@@ -109,7 +108,7 @@ stage('SonarQube Analysis') {
 
         stage('Deploy to Production ECS') {
             steps {
-                bat 'aws ecs update-service --cluster prod-cluster --service prod-service --force-new-deployment'
+                bat 'aws ecs update-service --cluster job-portal-cluster --service prod-service --force-new-deployment'
             }
         }
 
