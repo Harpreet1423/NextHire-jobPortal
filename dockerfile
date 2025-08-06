@@ -1,13 +1,24 @@
-FROM node:18-alpine
+# ---- Build Stage ----
+FROM node:18-alpine AS build
 
 WORKDIR /app
 
 COPY package*.json ./
-
-RUN npm install --production
+RUN npm install
 
 COPY . .
+RUN npm run build
 
-EXPOSE 5173
+# ---- Serve Stage ----
+FROM nginx:alpine
 
-CMD ["npm", "run", "dev"]
+# Copy custom Nginx config (your line here 👇)
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+# Copy the built React app to Nginx's web root
+COPY --from=build /app/dist /usr/share/nginx/html
+
+# Expose port 80 (standard for HTTP)
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]

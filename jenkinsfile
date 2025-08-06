@@ -20,36 +20,36 @@ pipeline {
             }
         }
 
-        stage('SonarQube Analysis') {
-            steps {
-                withSonarQubeEnv('sonarqube') {
-                    withCredentials([string(credentialsId: 'sonar-auth-token', variable: 'SONAR_TOKEN')]) {
-                        script {
-                            def scannerHome = tool name: 'SonarScannerDefault', type: 'hudson.plugins.sonar.SonarRunnerInstallation'
-                            // Windows bat: use %SONAR_TOKEN%
-                            bat """
-                                "${scannerHome}\\bin\\sonar-scanner.bat" ^
-                                -Dsonar.projectKey=${env.SONAR_PROJECT_KEY} ^
-                                -Dsonar.sources=. ^
-                                -Dsonar.host.url=${env.SONAR_HOST_URL} ^
-                                -Dsonar.token=%SONAR_TOKEN%
-                            """
-                        }
-                    }
-                }
-            }
-        }
+        // stage('SonarQube Analysis') {
+        //     steps {
+        //         withSonarQubeEnv('sonarqube') {
+        //             withCredentials([string(credentialsId: 'sonar-auth-token', variable: 'SONAR_TOKEN')]) {
+        //                 script {
+        //                     def scannerHome = tool name: 'SonarScannerDefault', type: 'hudson.plugins.sonar.SonarRunnerInstallation'
+        //                     // Windows bat: use %SONAR_TOKEN%
+        //                     bat """
+        //                         "${scannerHome}\\bin\\sonar-scanner.bat" ^
+        //                         -Dsonar.projectKey=${env.SONAR_PROJECT_KEY} ^
+        //                         -Dsonar.sources=. ^
+        //                         -Dsonar.host.url=${env.SONAR_HOST_URL} ^
+        //                         -Dsonar.token=%SONAR_TOKEN%
+        //                     """
+        //                 }
+        //             }
+        //         }
+        //     }
+        // }
 
-        stage('Snyk Security Scan') {
-            steps {
-                withCredentials([string(credentialsId: 'SNYK_TOKEN', variable: 'SNYK_TOKEN')]) {
-                    bat 'npm install -g snyk'
-                    // pass token via env var configured by withCredentials
-                    bat 'set SNYK_TOKEN=%SNYK_TOKEN% && snyk test --all-projects --ci'
-                    bat 'set SNYK_TOKEN=%SNYK_TOKEN% && snyk monitor --all-projects'
-                }
-            }
-        }
+        // stage('Snyk Security Scan') {
+        //     steps {
+        //         withCredentials([string(credentialsId: 'SNYK_TOKEN', variable: 'SNYK_TOKEN')]) {
+        //             bat 'npm install -g snyk'
+        //             // pass token via env var configured by withCredentials
+        //             bat 'set SNYK_TOKEN=%SNYK_TOKEN% && snyk test --all-projects --ci'
+        //             bat 'set SNYK_TOKEN=%SNYK_TOKEN% && snyk monitor --all-projects'
+        //         }
+        //     }
+        // }
 
         stage('Terraform - Provision Infra') {
             steps {
@@ -83,114 +83,114 @@ pipeline {
                 }
             }
         }
-        stage('Trivy Scan (image)') {
-  environment {
-    // Default to fail only on CRITICAL. To fail on HIGH+CRITICAL set 'HIGH,CRITICAL'
-    TRIVY_FAIL_SEVERITIES = 'CRITICAL'
-  }
-  steps {
-    echo "===== Trivy scan will use image: ${ECR_IMAGE} ====="
-    script {
-      env.TRIVY_REPORT = "trivy-report-${BUILD_NUMBER}.json"
-    }
+//         stage('Trivy Scan (image)') {
+//   environment {
+//     // Default to fail only on CRITICAL. To fail on HIGH+CRITICAL set 'HIGH,CRITICAL'
+//     TRIVY_FAIL_SEVERITIES = 'CRITICAL'
+//   }
+//   steps {
+//     echo "===== Trivy scan will use image: ${ECR_IMAGE} ====="
+//     script {
+//       env.TRIVY_REPORT = "trivy-report-${BUILD_NUMBER}.json"
+//     }
 
-    // PowerShell helper script (avoid problematic backslashes for Groovy parsing)
-    writeFile file: 'run-trivy-and-parse.ps1', text: '''
-param(
-  [Parameter(Mandatory=$true)][string]$image,
-  [Parameter(Mandatory=$true)][string]$reportFile,
-  [Parameter(Mandatory=$false)][string]$trivyMode = 'blocking',
-  [Parameter(Mandatory=$false)][string]$failSevList = 'CRITICAL'
-)
+//     // PowerShell helper script (avoid problematic backslashes for Groovy parsing)
+//     writeFile file: 'run-trivy-and-parse.ps1', text: '''
+// param(
+//   [Parameter(Mandatory=$true)][string]$image,
+//   [Parameter(Mandatory=$true)][string]$reportFile,
+//   [Parameter(Mandatory=$false)][string]$trivyMode = 'blocking',
+//   [Parameter(Mandatory=$false)][string]$failSevList = 'CRITICAL'
+// )
 
-function Run-Trivy {
-    param([string]$img, [string]$outFile)
+// function Run-Trivy {
+//     param([string]$img, [string]$outFile)
 
-    if (Get-Command trivy -ErrorAction SilentlyContinue) {
-        Write-Host "Trivy CLI found locally. Scanning image: $img"
-        trivy image --format json --output $outFile $img
-        return $LASTEXITCODE
-    }
+//     if (Get-Command trivy -ErrorAction SilentlyContinue) {
+//         Write-Host "Trivy CLI found locally. Scanning image: $img"
+//         trivy image --format json --output $outFile $img
+//         return $LASTEXITCODE
+//     }
 
-    Write-Host "Trivy CLI not found locally; attempting to run Trivy via Docker..."
-    if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
-        Write-Error "Docker not found on agent; cannot run Trivy via container."
-        return 2
-    }
+//     Write-Host "Trivy CLI not found locally; attempting to run Trivy via Docker..."
+//     if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+//         Write-Error "Docker not found on agent; cannot run Trivy via container."
+//         return 2
+//     }
 
-    $ws = $env:WORKSPACE
-    if (-not $ws) {
-        Write-Error "WORKSPACE environment variable is not set. Aborting."
-        return 3
-    }
+//     $ws = $env:WORKSPACE
+//     if (-not $ws) {
+//         Write-Error "WORKSPACE environment variable is not set. Aborting."
+//         return 3
+//     }
 
-    # Use explicit drive mount formatting to avoid variable parsing issues
-    $workdirMount = "$($ws):/workdir"
-    Write-Host "Running trivy container; workspace mounted: $workdirMount"
+//     # Use explicit drive mount formatting to avoid variable parsing issues
+//     $workdirMount = "$($ws):/workdir"
+//     Write-Host "Running trivy container; workspace mounted: $workdirMount"
 
-    try {
-        docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v $workdirMount aquasec/trivy:latest image --format json --output /workdir/$outFile $img
-        return $LASTEXITCODE
-    } catch {
-        Write-Error "Failed to run trivy container: $_"
-        return 4
-    }
-}
+//     try {
+//         docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v $workdirMount aquasec/trivy:latest image --format json --output /workdir/$outFile $img
+//         return $LASTEXITCODE
+//     } catch {
+//         Write-Error "Failed to run trivy container: $_"
+//         return 4
+//     }
+// }
 
-$rc = Run-Trivy -img $image -outFile $reportFile
-if ($rc -ne 0) {
-    Write-Error "Trivy run failed with exit code $rc"
-    exit $rc
-}
+// $rc = Run-Trivy -img $image -outFile $reportFile
+// if ($rc -ne 0) {
+//     Write-Error "Trivy run failed with exit code $rc"
+//     exit $rc
+// }
 
-try {
-    $json = Get-Content -Raw $reportFile | ConvertFrom-Json
-} catch {
-    Write-Error "Failed to read/parse $reportFile : $_"
-    exit 5
-}
+// try {
+//     $json = Get-Content -Raw $reportFile | ConvertFrom-Json
+// } catch {
+//     Write-Error "Failed to read/parse $reportFile : $_"
+//     exit 5
+// }
 
-# Remove spaces from list and build array (case-insensitive)
-$failSevList = $failSevList.Replace(' ', '')
-$failSevs = @()
-if ($failSevList) {
-    $failSevs = $failSevList.Split(',') | ForEach-Object { $_.ToUpperInvariant() }
-}
+// # Remove spaces from list and build array (case-insensitive)
+// $failSevList = $failSevList.Replace(' ', '')
+// $failSevs = @()
+// if ($failSevList) {
+//     $failSevs = $failSevList.Split(',') | ForEach-Object { $_.ToUpperInvariant() }
+// }
 
-$count = 0
-if ($json -and $json.Results) {
-    foreach ($res in $json.Results) {
-        if ($res.Vulnerabilities) {
-            foreach ($v in $res.Vulnerabilities) {
-                if ($v.Severity) {
-                    $sev = $v.Severity.ToUpperInvariant()
-                    if ($sev -in $failSevs) { $count++ }
-                }
-            }
-        }
-    }
-}
+// $count = 0
+// if ($json -and $json.Results) {
+//     foreach ($res in $json.Results) {
+//         if ($res.Vulnerabilities) {
+//             foreach ($v in $res.Vulnerabilities) {
+//                 if ($v.Severity) {
+//                     $sev = $v.Severity.ToUpperInvariant()
+//                     if ($sev -in $failSevs) { $count++ }
+//                 }
+//             }
+//         }
+//     }
+// }
 
-Write-Host "Trivy findings matching failure severities ($($failSevs -join ',')) : $count"
+// Write-Host "Trivy findings matching failure severities ($($failSevs -join ',')) : $count"
 
-if ($trivyMode -eq 'blocking' -and $count -gt 0) {
-    Write-Host "Blocking mode enabled and $count findings in configured severities -> failing (exit 1)"
-    exit 1
-}
+// if ($trivyMode -eq 'blocking' -and $count -gt 0) {
+//     Write-Host "Blocking mode enabled and $count findings in configured severities -> failing (exit 1)"
+//     exit 1
+// }
 
-Write-Host "No blocking condition met -> success (exit 0)"
-exit 0
-'''
+// Write-Host "No blocking condition met -> success (exit 0)"
+// exit 0
+// '''
 
-    // Execute PowerShell script, pass args
-    bat """
-      powershell -NoProfile -ExecutionPolicy Bypass -File run-trivy-and-parse.ps1 -image "${ECR_IMAGE}" -reportFile "${TRIVY_REPORT}" -trivyMode "${TRIVY_MODE}" -failSevList "${TRIVY_FAIL_SEVERITIES}"
-    """
+//     // Execute PowerShell script, pass args
+//     bat """
+//       powershell -NoProfile -ExecutionPolicy Bypass -File run-trivy-and-parse.ps1 -image "${ECR_IMAGE}" -reportFile "${TRIVY_REPORT}" -trivyMode "${TRIVY_MODE}" -failSevList "${TRIVY_FAIL_SEVERITIES}"
+//     """
 
-    // Archive the report so you can download from the Jenkins UI
-    archiveArtifacts artifacts: 'trivy-report-*.json', fingerprint: true, allowEmptyArchive: false
-  }
-}
+//     // Archive the report so you can download from the Jenkins UI
+//     archiveArtifacts artifacts: 'trivy-report-*.json', fingerprint: true, allowEmptyArchive: false
+//   }
+// }
 
 
 
@@ -224,6 +224,9 @@ exit 0
             }
         }
 
+        
+
+
         stage('Deploy to Staging ECS') {
             steps {
                 withCredentials([
@@ -251,144 +254,5 @@ exit 0
         always { echo "Finished: ${currentBuild.fullDisplayName}" }
     }
 }
-
-
-// pipeline {
-//     agent any
-
-//     environment {
-//         AWS_DEFAULT_REGION = 'us-east-1'
-//         ECR_REPO = '345376996795.dkr.ecr.us-east-1.amazonaws.com/job-portal'
-//         IMAGE_TAG = "build-${BUILD_NUMBER}"
-//         SONAR_HOST_URL = 'http://localhost:9000'
-//         SONAR_PROJECT_KEY = 'NextHire-jobPortal'
-//         // Don't bind SONAR_TOKEN or SNYK_TOKEN here as environment - we will use withCredentials explicitly
-//         // SNYK_TOKEN = credentials('SNYK_TOKEN')
-//     }
-
-//     stages {
-
-//         stage('Checkout Code') {
-//             steps {
-//                 git branch: 'main', url: 'https://github.com/Harpreet1423/NextHire-jobPortal.git'
-//             }
-//         }
-
-//         stage('SonarQube Analysis') {
-//             steps {
-//                 withSonarQubeEnv('sonarqube') {
-//                     // bind token safely for bat
-//                     withCredentials([string(credentialsId: 'sonar-auth-token', variable: 'SONAR_TOKEN')]) {
-//                         script {
-//                             def scannerHome = tool name: 'SonarScannerDefault', type: 'hudson.plugins.sonar.SonarRunnerInstallation'
-//                             // Use sonar.token property (not sonar.login) and use %SONAR_TOKEN% inside Windows bat
-//                             bat """
-//                                 "${scannerHome}\\bin\\sonar-scanner.bat" ^
-//                                 -Dsonar.projectKey=${env.SONAR_PROJECT_KEY} ^
-//                                 -Dsonar.sources=. ^
-//                                 -Dsonar.host.url=${env.SONAR_HOST_URL} ^
-//                                 -Dsonar.token=%SONAR_TOKEN%
-//                             """
-//                         }
-//                     }
-//                 }
-//             }
-//         }
-
-//         stage('Snyk Security Scan') {
-//             steps {
-//                 withCredentials([string(credentialsId: 'SNYK_TOKEN', variable: 'SNYK_TOKEN')]) {
-//                     bat 'npm install -g snyk'
-//                     // pass token via env var configured by withCredentials
-//                     bat 'set SNYK_TOKEN=%SNYK_TOKEN% && snyk test --all-projects --ci'
-//                     bat 'set SNYK_TOKEN=%SNYK_TOKEN% && snyk monitor --all-projects'
-//                 }
-//             }
-//         }
-
-//         stage('Terraform - Provision Infra') {
-//             steps {
-//                 withCredentials([
-//                     [$class: 'AmazonWebServicesCredentialsBinding',
-//                      accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-//                      secretKeyVariable: 'AWS_SECRET_ACCESS_KEY',
-//                      credentialsId: 'aws-creds']
-//                 ]) {
-//                     dir('terraform') {
-//                         bat 'terraform init -upgrade'
-//                         // Do not import here. Do terraform plan & apply.
-//                         bat 'terraform plan -out=tfplan'
-//                         bat 'terraform apply -auto-approve tfplan'
-//                     }
-//                 }
-//             }
-//         }
-
-//         stage('Docker Build') {
-//             steps {
-//                 // build image and tag with local tag
-//                 bat "docker build -t app:${IMAGE_TAG} -f Dockerfile ."
-//             }
-//         }
-
-//         stage('Trivy Scan (image)') {
-//       steps {
-//         // Run trivy as docker container; fail build on HIGH/CRITICAL
-//         bat '''
-//           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --exit-code 1 --severity CRITICAL,HIGH ${ECR_IMAGE} || \
-//           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --exit-code 0 --severity CRITICAL,HIGH ${ECR_IMAGE}
-//         '''
-//         // Note: The first command exits 1 on findings; second ensures pipeline doesn't crash silently — adjust behavior as you want.
-//       }
-//     }
-
-//         stage('Push to ECR') {
-//             steps {
-//                 withCredentials([
-//                     [$class: 'AmazonWebServicesCredentialsBinding',
-//                      accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-//                      secretKeyVariable: 'AWS_SECRET_ACCESS_KEY',
-//                      credentialsId: 'aws-creds']
-//                 ]) {
-//                     script {
-//                         // login, tag with build-specific tag and with latest, then push both
-//                         bat """
-//                             aws ecr get-login-password --region ${env.AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${env.ECR_REPO}
-//                             docker tag app:${IMAGE_TAG} ${ECR_REPO}:${IMAGE_TAG}
-//                             docker push ${ECR_REPO}:${IMAGE_TAG}
-//                             rem also push latest (optional)
-//                             docker tag app:${IMAGE_TAG} ${ECR_REPO}:latest
-//                             docker push ${ECR_REPO}:latest
-//                         """
-//                     }
-//                 }
-//             }
-//         }
-
-//         stage('Deploy to Staging ECS') {
-//             steps {
-//                 withCredentials([
-//                     [$class: 'AmazonWebServicesCredentialsBinding',
-//                      accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-//                      secretKeyVariable: 'AWS_SECRET_ACCESS_KEY',
-//                      credentialsId: 'aws-creds']
-//                 ]) {
-//                     // This forces a new deployment; if taskdefinition uses :latest, ECS will pull latest image.
-//                     // Better: register new task definition referencing ${ECR_REPO}:${IMAGE_TAG} and update service to use the new revision.
-//                     bat """
-//                         aws ecs update-service --cluster job-portal-cluster --service staging-service --force-new-deployment --region ${env.AWS_DEFAULT_REGION}
-//                     """
-//                 }
-//             }
-//         }
-//     }
-
-//     post {
-//         success { echo "PIPELINE SUCCESS" }
-//         failure { echo "PIPELINE FAILED" }
-//         always { echo "Finished: ${currentBuild.fullDisplayName}" }
-//     }
-// }
-
 
 
