@@ -87,73 +87,50 @@ pipeline {
 
        stage('Trivy Scan (image)') {
   steps {
+    echo "===== Trivy scan will use image: ${ECR_IMAGE} ====="
+    // Use script so we can set env and run multi-line bat easily
     script {
-      // compute ECR_IMAGE at runtime so IMAGE_TAG interpolation works
-      env.ECR_IMAGE = "${env.ECR_REPO}:${env.IMAGE_TAG}"
-      echo "===== Trivy scan will use image: ${env.ECR_IMAGE} ====="
-
-      // Build the commands according to the selected TRIVY_MODE
-      def blockingCmd = "trivy image --exit-code 1 --severity CRITICAL,HIGH ${env.ECR_IMAGE}"
-      def reportOnlyCmd = "trivy image --exit-code 0 --severity CRITICAL,HIGH ${env.ECR_IMAGE}"
-      def hybridCriticalCmd = "trivy image --exit-code 1 --severity CRITICAL ${env.ECR_IMAGE}"
-      def hybridHighCmd = "trivy image --exit-code 0 --severity HIGH ${env.ECR_IMAGE}"
-
-      // Choose which commands to run depending on TRIVY_MODE
-      def chosenCmds = []
-      if (env.TRIVY_MODE == 'report-only') {
-        chosenCmds = [ reportOnlyCmd ]
-      } else if (env.TRIVY_MODE == 'hybrid') {
-        // fail on CRITICAL, show HIGH only
-        chosenCmds = [ hybridCriticalCmd, hybridHighCmd ]
-      } else {
-        // default to blocking: fail on CRITICAL or HIGH
-        chosenCmds = [ blockingCmd ]
-      }
-
-      // Windows bat script: check local trivy first else run trivy docker container.
-      // Note: use caret ^ to escape newlines inside bat multiline string.
-      def batScript = """
-        where trivy 1>nul 2>&1
-        if %ERRORLEVEL% EQU 0 (
-          echo Found trivy on agent, running local CLI...
-      """
-
-      // append chosen commands for local trivy
-      chosenCmds.eachWithIndex { c, idx ->
-        // For local CLI we run each command; for failing commands we allow fallback to non-failing report
-        if (env.TRIVY_MODE == 'blocking') {
-          // blocking: single command which exits non-zero on findings
-          batScript += "\n          ${c}"
-        } else if (env.TRIVY_MODE == 'report-only') {
-          batScript += "\n          ${c}"
-        } else {
-          // hybrid: two commands: first may fail (CRITICAL), second is report-only (HIGH)
-          batScript += "\n          ${c}"
-        }
-      }
-
-      batScript += """
-        ) else (
-          echo trivy not found locally, running trivy via docker container...
-          REM On Windows Docker Desktop the socket path may differ; this assumes socket is available at /var/run/docker.sock
-      """
-
-      // append docker-run equivalents
-      chosenCmds.each { c ->
-        // run docker trivy with same arguments as local
-        // include || to allow a second command to run if first exits non-zero (for cases we want to still run report)
-        batScript += "\n          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest ${c} "
-        // note: do not add "||" here because we want command exit behavior to be preserved:
-        // - blocking: first command can fail the step (desired)
-        // - hybrid/report-only: the CRITICAL command may fail; pipeline should handle that
-      }
-
-      batScript += "\n        )"
-      // Run the composed bat script
-      bat batScript
+      // Use a stable filename for the JSON report
+      env.TRIVY_REPORT = "trivy-report-${BUILD_NUMBER}.json"
     }
+
+    // PowerShell + docker invocation inside a Windows bat block:
+    bat """
+      where trivy 1>nul 2>&1
+      if %ERRORLEVEL% EQU 0 (
+        echo Found trivy on agent, running local CLI and producing JSON report...
+        trivy image --format json --output %TRIVY_REPORT% ${ECR_IMAGE}
+      ) else (
+        echo trivy not found locally, running trivy via docker container...
+        REM Ensure Docker socket mount path is correct for your Windows Docker setup.
+        REM Do NOT prefix with "trivy" if the container entrypoint is already trivy.
+        docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --format json --output /tmp/%TRIVY_REPORT% ${ECR_IMAGE}
+        REM copy result from container location (use a short-lived container to produce file on host instead):
+        docker run --rm -v %CD%:/workdir aquasec/trivy:latest sh -c "cat /tmp/%TRIVY_REPORT%" > %TRIVY_REPORT% || (
+          REM fallback: try running trivy directly writing to stdout and capture
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --format json ${ECR_IMAGE} > %TRIVY_REPORT%
+        )
+      )
+      
+      REM Now parse JSON with PowerShell to count HIGH/CRITICAL vulnerabilities:
+      powershell -NoProfile -Command ^
+        "$r = Get-Content -Raw '%TRIVY_REPORT%' | ConvertFrom-Json; ^
+         $count = 0; ^
+         if ($r -and $r.Results) { ^
+           foreach ($res in $r.Results) { ^
+             if ($res.Vulnerabilities) { ^
+               foreach ($v in $res.Vulnerabilities) { ^
+                 if ($v.Severity -in @('HIGH','CRITICAL')) { $count++ } ^
+               } ^
+             } ^
+           } ^
+         } ^
+         Write-Host 'Trivy HIGH/CRITICAL findings:' $count; ^
+         if ('${TRIVY_MODE}' -eq 'blocking' -and $count -gt 0) { exit 1 } else { exit 0 }"
+    """
   }
 }
+
 
 
         stage('Push to ECR') {
