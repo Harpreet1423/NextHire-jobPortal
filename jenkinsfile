@@ -8,12 +8,8 @@ pipeline {
         ECR_IMAGE = "${ECR_REPO}:${IMAGE_TAG}"
         SONAR_HOST_URL = 'http://localhost:9000'
         SONAR_PROJECT_KEY = 'NextHire-jobPortal'
-         TRIVY_MODE = 'blocking'
         // Do not put secrets here; we use withCredentials where needed
     }
-    parameters {
-  choice(name: 'TRIVY_MODE', choices: ['blocking','hybrid','report-only'], description: 'Trivy behaviour')
-}
 
     stages {
 
@@ -71,67 +67,31 @@ pipeline {
             }
         }
 
-       stage('Docker Build') {
-    steps {
-        script {
-            // ensure ECR_IMAGE is set
-            env.ECR_IMAGE = "${env.ECR_REPO}:${env.IMAGE_TAG}"
+        stage('Docker Build') {
+            steps {
+                // build image and tag with local tag
+                 bat "docker build -t app:${IMAGE_TAG} -f Dockerfile ."
+                 bat "docker tag app:${IMAGE_TAG} ${ECR_IMAGE}"
+            }
         }
-        // build image with a local tag
-        bat "docker build -t app:${IMAGE_TAG} -f Dockerfile ."
-        // tag the image with ECR name for Trivy + push later
-        bat "docker tag app:${IMAGE_TAG} ${ECR_IMAGE}"
+
+        stage('Trivy Scan (image)') {
+    steps {
+        echo "===== Trivy scan will use image: ${ECR_IMAGE} ====="
+        bat """
+          where trivy 1>nul 2>&1
+          if %ERRORLEVEL% EQU 0 (
+            echo Found trivy on agent, running local CLI...
+            trivy image --exit-code 1 --severity CRITICAL,HIGH ${ECR_IMAGE} || trivy image --exit-code 0 --severity CRITICAL,HIGH ${ECR_IMAGE}
+          ) else (
+            echo trivy not found locally, running trivy via docker container...
+            REM On Windows Docker Desktop the socket may not be at /var/run/docker.sock; if using Docker Desktop it often works.
+            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --exit-code 1 --severity CRITICAL,HIGH ${ECR_IMAGE} || ^
+            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --exit-code 0 --severity CRITICAL,HIGH ${ECR_IMAGE}
+          )
+        """
     }
 }
-
-
-       stage('Trivy Scan (image)') {
-  steps {
-    echo "===== Trivy scan will use image: ${ECR_IMAGE} ====="
-    // Use script so we can set env and run multi-line bat easily
-    script {
-      // Use a stable filename for the JSON report
-      env.TRIVY_REPORT = "trivy-report-${BUILD_NUMBER}.json"
-    }
-
-    // PowerShell + docker invocation inside a Windows bat block:
-    bat """
-      where trivy 1>nul 2>&1
-      if %ERRORLEVEL% EQU 0 (
-        echo Found trivy on agent, running local CLI and producing JSON report...
-        trivy image --format json --output %TRIVY_REPORT% ${ECR_IMAGE}
-      ) else (
-        echo trivy not found locally, running trivy via docker container...
-        REM Ensure Docker socket mount path is correct for your Windows Docker setup.
-        REM Do NOT prefix with "trivy" if the container entrypoint is already trivy.
-        docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --format json --output /tmp/%TRIVY_REPORT% ${ECR_IMAGE}
-        REM copy result from container location (use a short-lived container to produce file on host instead):
-        docker run --rm -v %CD%:/workdir aquasec/trivy:latest sh -c "cat /tmp/%TRIVY_REPORT%" > %TRIVY_REPORT% || (
-          REM fallback: try running trivy directly writing to stdout and capture
-          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --format json ${ECR_IMAGE} > %TRIVY_REPORT%
-        )
-      )
-      
-      REM Now parse JSON with PowerShell to count HIGH/CRITICAL vulnerabilities:
-      powershell -NoProfile -Command ^
-        "$r = Get-Content -Raw '%TRIVY_REPORT%' | ConvertFrom-Json; ^
-         $count = 0; ^
-         if ($r -and $r.Results) { ^
-           foreach ($res in $r.Results) { ^
-             if ($res.Vulnerabilities) { ^
-               foreach ($v in $res.Vulnerabilities) { ^
-                 if ($v.Severity -in @('HIGH','CRITICAL')) { $count++ } ^
-               } ^
-             } ^
-           } ^
-         } ^
-         Write-Host 'Trivy HIGH/CRITICAL findings:' $count; ^
-         if ('${TRIVY_MODE}' -eq 'blocking' -and $count -gt 0) { exit 1 } else { exit 0 }"
-    """
-  }
-}
-
-
 
         stage('Push to ECR') {
             steps {
