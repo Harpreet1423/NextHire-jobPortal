@@ -88,46 +88,82 @@ pipeline {
           steps {
             echo "===== Trivy scan will use image: ${ECR_IMAGE} ====="
             script {
-              // Use a stable filename for the JSON report
+              // stable filename for the JSON report
               env.TRIVY_REPORT = "trivy-report-${BUILD_NUMBER}.json"
             }
 
-            // PowerShell + docker invocation inside a Windows bat block:
-            // NOTE: all PowerShell $variables are escaped (e.g. \$r) to avoid Groovy GString interpolation.
-            bat """
-              where trivy 1>nul 2>&1
-              if %ERRORLEVEL% EQU 0 (
-                echo Found trivy on agent, running local CLI and producing JSON report...
-                trivy image --format json --output %TRIVY_REPORT% ${ECR_IMAGE}
-              ) else (
-                echo trivy not found locally, running trivy via docker container...
-                REM Ensure Docker socket mount path is correct for your Windows Docker setup.
-                docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --format json --output /tmp/%TRIVY_REPORT% ${ECR_IMAGE}
-                REM copy result from container location to host by running a short-lived container that writes the file to workspace
-                docker run --rm -v %CD%:/workdir aquasec/trivy:latest sh -c "cat /tmp/%TRIVY_REPORT%" > %TRIVY_REPORT% || (
-                  REM fallback: try running trivy directly writing to stdout and capture
-                  docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --format json ${ECR_IMAGE} > %TRIVY_REPORT%
-                )
-              )
+            // Write a small PowerShell helper script that:
+            // - detects trivy CLI locally; if missing, uses Docker
+            // - produces a JSON report file in workspace
+            // - parses JSON and counts HIGH/CRITICAL vulnerabilities
+            writeFile file: 'run-trivy-and-parse.ps1', text: """
+param(
+  [string]\$image,
+  [string]\$reportFile,
+  [string]\$trivyMode
+)
 
-              REM Now parse JSON with PowerShell to count HIGH/CRITICAL vulnerabilities:
-              powershell -NoProfile -Command ^
-                "\$r = Get-Content -Raw '%TRIVY_REPORT%' | ConvertFrom-Json; ^
-                 \$count = 0; ^
-                 if (\$r -and \$r.Results) { ^
-                   foreach (\$res in \$r.Results) { ^
-                     if (\$res.Vulnerabilities) { ^
-                       foreach (\$v in \$res.Vulnerabilities) { ^
-                         if (\$v.Severity -in @('HIGH','CRITICAL')) { \$count++ } ^
-                       } ^
-                     } ^
-                   } ^
-                 } ^
-                 Write-Host 'Trivy HIGH/CRITICAL findings:' \$count; ^
-                 if ('${TRIVY_MODE}' -eq 'blocking' -and \$count -gt 0) { exit 1 } else { exit 0 }"
+# Function to run trivy (local or docker)
+function Run-Trivy {
+    param([string]\$img, [string]\$outFile)
+    if (Get-Command trivy -ErrorAction SilentlyContinue) {
+        Write-Host "Trivy CLI found locally. Scanning..."
+        trivy image --format json --output \$outFile \$img
+        return \$?
+    } else {
+        Write-Host "Trivy CLI not found locally; running trivy via docker container..."
+        # Ensure docker is available
+        if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+            Write-Error "Docker not found on agent; cannot run Trivy via container."
+            exit 2
+        }
+        # Run Trivy container and write report to host workspace
+        docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v ${env.WORKSPACE}:/workdir aquasec/trivy:latest image --format json --output /workdir/\$outFile \$img
+        return \$?
+    }
+}
+
+# Run trivy and produce JSON
+\$rc = Run-Trivy -img \$image -outFile \$reportFile
+if (\$rc -ne 0) {
+    Write-Error "Trivy run failed with exit code \$rc"
+    exit \$rc
+}
+
+# Parse JSON and count HIGH/CRITICAL
+try {
+    \$r = Get-Content -Raw \$reportFile | ConvertFrom-Json
+} catch {
+    Write-Error "Failed to read/parse \$reportFile"
+    exit 3
+}
+
+\$count = 0
+if (\$r -and \$r.Results) {
+    foreach (\$res in \$r.Results) {
+        if (\$res.Vulnerabilities) {
+            foreach (\$v in \$res.Vulnerabilities) {
+                if (\$v.Severity -in @('HIGH','CRITICAL')) { \$count++ }
+            }
+        }
+    }
+}
+
+Write-Host "Trivy HIGH/CRITICAL findings: \$count"
+if (\$trivyMode -eq 'blocking' -and \$count -gt 0) {
+    exit 1
+} else {
+    exit 0
+}
+"""
+
+            // Execute the PowerShell script with arguments
+            bat """
+              powershell -NoProfile -ExecutionPolicy Bypass -File run-trivy-and-parse.ps1 -image "${ECR_IMAGE}" -reportFile "${TRIVY_REPORT}" -trivyMode "${TRIVY_MODE}"
             """
           }
         }
+
 
         stage('Push to ECR') {
             steps {
