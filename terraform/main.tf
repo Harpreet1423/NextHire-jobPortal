@@ -16,9 +16,16 @@ resource "aws_ecr_repository" "job_portal" {
   }
 }
 
+resource "aws_ecs_cluster" "job_portal_cluster" {
+  name = "job-portal-cluster"
+}
+
+# We expect this IAM role already exists in the account.
+# Use a data source to read it (no Terraform creation).
 data "aws_iam_role" "ecs_task_execution_role" {
   name = "ecsTaskExecutionRole"
 }
+
 
 # Example usage (if needed): you can reference the role as:
 # data.aws_iam_role.ecs_task_execution_role.arn
