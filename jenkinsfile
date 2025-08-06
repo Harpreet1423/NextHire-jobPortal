@@ -74,28 +74,19 @@ pipeline {
         }
 
         stage('Trivy Scan (image)') {
-            steps {
-                script {
-                    // Build full image name (ECR repo + tag) and export to env for use in bat
-                    env.ECR_IMAGE = "${env.ECR_REPO}:${env.IMAGE_TAG}"
-                }
-                // Windows-friendly bat: check for a local trivy binary, otherwise run trivy in docker
-                bat """
-                    echo ===== Trivy scan will use image: %ECR_IMAGE% =====
-                    where trivy >nul 2>&1
-                    if %ERRORLEVEL% EQU 0 (
-                        echo Found trivy on agent, running local CLI...
-                        trivy image --exit-code 1 --severity CRITICAL,HIGH %ECR_IMAGE%
-                    ) else (
-                        echo trivy not found locally, running trivy via docker container...
-                        REM If your agent is Windows Docker Desktop, the socket mount may differ.
-                        REM On Linux agents use -v /var/run/docker.sock:/var/run/docker.sock
-                        docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --exit-code 1 --severity CRITICAL,HIGH %ECR_IMAGE%
-                    )
-                """
-                // If trivy exits non-zero (findings), the stage will fail and pipeline stops.
-            }
-        }
+  steps {
+    script { env.IMAGE_LOCAL = "app:${IMAGE_TAG}" }
+    bat """
+      echo ===== Trivy scan will use local image: %IMAGE_LOCAL% =====
+      where trivy >nul 2>&1
+      if %ERRORLEVEL% EQU 0 (
+        trivy image --exit-code 1 --severity CRITICAL,HIGH %IMAGE_LOCAL%
+      ) else (
+        docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --exit-code 1 --severity CRITICAL,HIGH %IMAGE_LOCAL%
+      )
+    """
+  }
+}
 
         stage('Push to ECR') {
             steps {
