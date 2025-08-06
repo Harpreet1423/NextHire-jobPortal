@@ -83,7 +83,7 @@ pipeline {
                 }
             }
         }
-stage('Trivy Scan (image)') {
+        stage('Trivy Scan (image)') {
   environment {
     // Default to fail only on CRITICAL. To fail on HIGH+CRITICAL set 'HIGH,CRITICAL'
     TRIVY_FAIL_SEVERITIES = 'CRITICAL'
@@ -94,7 +94,7 @@ stage('Trivy Scan (image)') {
       env.TRIVY_REPORT = "trivy-report-${BUILD_NUMBER}.json"
     }
 
-    // Write PowerShell helper script
+    // PowerShell helper script (avoid problematic backslashes for Groovy parsing)
     writeFile file: 'run-trivy-and-parse.ps1', text: '''
 param(
   [Parameter(Mandatory=$true)][string]$image,
@@ -105,6 +105,7 @@ param(
 
 function Run-Trivy {
     param([string]$img, [string]$outFile)
+
     if (Get-Command trivy -ErrorAction SilentlyContinue) {
         Write-Host "Trivy CLI found locally. Scanning image: $img"
         trivy image --format json --output $outFile $img
@@ -123,7 +124,7 @@ function Run-Trivy {
         return 3
     }
 
-    # Use $($ws) to avoid PowerShell parsing issues with drive letters.
+    # Use explicit drive mount formatting to avoid variable parsing issues
     $workdirMount = "$($ws):/workdir"
     Write-Host "Running trivy container; workspace mounted: $workdirMount"
 
@@ -149,8 +150,8 @@ try {
     exit 5
 }
 
-# Build failure severity set from provided comma-separated list (case-insensitive)
-$failSevList = $failSevList -replace '\s',''
+# Remove spaces from list and build array (case-insensitive)
+$failSevList = $failSevList.Replace(' ', '')
 $failSevs = @()
 if ($failSevList) {
     $failSevs = $failSevList.Split(',') | ForEach-Object { $_.ToUpperInvariant() }
@@ -181,15 +182,16 @@ Write-Host "No blocking condition met -> success (exit 0)"
 exit 0
 '''
 
-    // Execute PowerShell
+    // Execute PowerShell script, pass args
     bat """
       powershell -NoProfile -ExecutionPolicy Bypass -File run-trivy-and-parse.ps1 -image "${ECR_IMAGE}" -reportFile "${TRIVY_REPORT}" -trivyMode "${TRIVY_MODE}" -failSevList "${TRIVY_FAIL_SEVERITIES}"
     """
 
-    // Archive the report in Jenkins to inspect later
+    // Archive the report so you can download from the Jenkins UI
     archiveArtifacts artifacts: 'trivy-report-*.json', fingerprint: true, allowEmptyArchive: false
   }
 }
+
 
 
 
