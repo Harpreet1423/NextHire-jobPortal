@@ -7,8 +7,7 @@ pipeline {
         IMAGE_TAG = "build-${BUILD_NUMBER}"
         SONAR_HOST_URL = 'http://localhost:9000'
         SONAR_PROJECT_KEY = 'NextHire-jobPortal'
-        // Don't bind SONAR_TOKEN or SNYK_TOKEN here as environment - we will use withCredentials explicitly
-        // SNYK_TOKEN = credentials('SNYK_TOKEN')
+        // Do not put secrets here; we use withCredentials where needed
     }
 
     stages {
@@ -22,11 +21,10 @@ pipeline {
         stage('SonarQube Analysis') {
             steps {
                 withSonarQubeEnv('sonarqube') {
-                    // bind token safely for bat
                     withCredentials([string(credentialsId: 'sonar-auth-token', variable: 'SONAR_TOKEN')]) {
                         script {
                             def scannerHome = tool name: 'SonarScannerDefault', type: 'hudson.plugins.sonar.SonarRunnerInstallation'
-                            // Use sonar.token property (not sonar.login) and use %SONAR_TOKEN% inside Windows bat
+                            // Windows bat: use %SONAR_TOKEN%
                             bat """
                                 "${scannerHome}\\bin\\sonar-scanner.bat" ^
                                 -Dsonar.projectKey=${env.SONAR_PROJECT_KEY} ^
@@ -61,7 +59,6 @@ pipeline {
                 ]) {
                     dir('terraform') {
                         bat 'terraform init -upgrade'
-                        // Do not import here. Do terraform plan & apply.
                         bat 'terraform plan -out=tfplan'
                         bat 'terraform apply -auto-approve tfplan'
                     }
@@ -77,15 +74,28 @@ pipeline {
         }
 
         stage('Trivy Scan (image)') {
-      steps {
-        // Run trivy as docker container; fail build on HIGH/CRITICAL
-        bat '''
-          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --exit-code 1 --severity CRITICAL,HIGH ${ECR_IMAGE} || \
-          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --exit-code 0 --severity CRITICAL,HIGH ${ECR_IMAGE}
-        '''
-        // Note: The first command exits 1 on findings; second ensures pipeline doesn't crash silently — adjust behavior as you want.
-      }
-    }
+            steps {
+                script {
+                    // Build full image name (ECR repo + tag) and export to env for use in bat
+                    env.ECR_IMAGE = "${env.ECR_REPO}:${env.IMAGE_TAG}"
+                }
+                // Windows-friendly bat: check for a local trivy binary, otherwise run trivy in docker
+                bat """
+                    echo ===== Trivy scan will use image: %ECR_IMAGE% =====
+                    where trivy >nul 2>&1
+                    if %ERRORLEVEL% EQU 0 (
+                        echo Found trivy on agent, running local CLI...
+                        trivy image --exit-code 1 --severity CRITICAL,HIGH %ECR_IMAGE%
+                    ) else (
+                        echo trivy not found locally, running trivy via docker container...
+                        REM If your agent is Windows Docker Desktop, the socket mount may differ.
+                        REM On Linux agents use -v /var/run/docker.sock:/var/run/docker.sock
+                        docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --exit-code 1 --severity CRITICAL,HIGH %ECR_IMAGE%
+                    )
+                """
+                // If trivy exits non-zero (findings), the stage will fail and pipeline stops.
+            }
+        }
 
         stage('Push to ECR') {
             steps {
@@ -96,7 +106,7 @@ pipeline {
                      credentialsId: 'aws-creds']
                 ]) {
                     script {
-                        // login, tag with build-specific tag and with latest, then push both
+                        // The ${...} here are Groovy interpolations before the bat runs.
                         bat """
                             aws ecr get-login-password --region ${env.AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${env.ECR_REPO}
                             docker tag app:${IMAGE_TAG} ${ECR_REPO}:${IMAGE_TAG}
@@ -118,8 +128,8 @@ pipeline {
                      secretKeyVariable: 'AWS_SECRET_ACCESS_KEY',
                      credentialsId: 'aws-creds']
                 ]) {
-                    // This forces a new deployment; if taskdefinition uses :latest, ECS will pull latest image.
-                    // Better: register new task definition referencing ${ECR_REPO}:${IMAGE_TAG} and update service to use the new revision.
+                    // This forces the service to pull the new image, assuming your task definition refers to the image tag you pushed,
+                    // or you registered a new task definition that points to ${ECR_REPO}:${IMAGE_TAG}.
                     bat """
                         aws ecs update-service --cluster job-portal-cluster --service staging-service --force-new-deployment --region ${env.AWS_DEFAULT_REGION}
                     """
@@ -137,6 +147,8 @@ pipeline {
 
 
 
+
+
 // pipeline {
 //     agent any
 
@@ -146,29 +158,34 @@ pipeline {
 //         IMAGE_TAG = "build-${BUILD_NUMBER}"
 //         SONAR_HOST_URL = 'http://localhost:9000'
 //         SONAR_PROJECT_KEY = 'NextHire-jobPortal'
-//         SONAR_TOKEN = credentials('sonar-auth-token')
-//         SNYK_TOKEN = credentials('SNYK_TOKEN')
+//         // Don't bind SONAR_TOKEN or SNYK_TOKEN here as environment - we will use withCredentials explicitly
+//         // SNYK_TOKEN = credentials('SNYK_TOKEN')
 //     }
 
 //     stages {
+
 //         stage('Checkout Code') {
 //             steps {
 //                 git branch: 'main', url: 'https://github.com/Harpreet1423/NextHire-jobPortal.git'
 //             }
 //         }
-// // SONARQUBE
+
 //         stage('SonarQube Analysis') {
 //             steps {
 //                 withSonarQubeEnv('sonarqube') {
-//                     script {
-//                         def scannerHome = tool name: 'SonarScannerDefault', type: 'hudson.plugins.sonar.SonarRunnerInstallation'
-//                         bat """
-//                             "${scannerHome}\\bin\\sonar-scanner.bat" ^
-//                             -Dsonar.projectKey=${env.SONAR_PROJECT_KEY} ^
-//                             -Dsonar.sources=. ^
-//                             -Dsonar.host.url=${env.SONAR_HOST_URL} ^
-//                             -Dsonar.login=${env.SONAR_TOKEN}
-//                         """
+//                     // bind token safely for bat
+//                     withCredentials([string(credentialsId: 'sonar-auth-token', variable: 'SONAR_TOKEN')]) {
+//                         script {
+//                             def scannerHome = tool name: 'SonarScannerDefault', type: 'hudson.plugins.sonar.SonarRunnerInstallation'
+//                             // Use sonar.token property (not sonar.login) and use %SONAR_TOKEN% inside Windows bat
+//                             bat """
+//                                 "${scannerHome}\\bin\\sonar-scanner.bat" ^
+//                                 -Dsonar.projectKey=${env.SONAR_PROJECT_KEY} ^
+//                                 -Dsonar.sources=. ^
+//                                 -Dsonar.host.url=${env.SONAR_HOST_URL} ^
+//                                 -Dsonar.token=%SONAR_TOKEN%
+//                             """
+//                         }
 //                     }
 //                 }
 //             }
@@ -176,25 +193,28 @@ pipeline {
 
 //         stage('Snyk Security Scan') {
 //             steps {
-//                 bat 'npm install -g snyk'
-//                 bat 'snyk test --all-projects --ci'
-//                 bat 'snyk monitor --all-projects'
+//                 withCredentials([string(credentialsId: 'SNYK_TOKEN', variable: 'SNYK_TOKEN')]) {
+//                     bat 'npm install -g snyk'
+//                     // pass token via env var configured by withCredentials
+//                     bat 'set SNYK_TOKEN=%SNYK_TOKEN% && snyk test --all-projects --ci'
+//                     bat 'set SNYK_TOKEN=%SNYK_TOKEN% && snyk monitor --all-projects'
+//                 }
 //             }
 //         }
 
 //         stage('Terraform - Provision Infra') {
 //             steps {
-//                 withCredentials([[
-//                     $class: 'AmazonWebServicesCredentialsBinding',
-//                     accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-//                     secretKeyVariable: 'AWS_SECRET_ACCESS_KEY',
-//                     credentialsId: 'aws-creds'
-//                 ]]) {
+//                 withCredentials([
+//                     [$class: 'AmazonWebServicesCredentialsBinding',
+//                      accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+//                      secretKeyVariable: 'AWS_SECRET_ACCESS_KEY',
+//                      credentialsId: 'aws-creds']
+//                 ]) {
 //                     dir('terraform') {
 //                         bat 'terraform init -upgrade'
-//                         bat 'aws ecr describe-repositories --repository-names job-portal'
-//                         bat 'terraform plan'
-//                         bat 'terraform apply -auto-approve'
+//                         // Do not import here. Do terraform plan & apply.
+//                         bat 'terraform plan -out=tfplan'
+//                         bat 'terraform apply -auto-approve tfplan'
 //                     }
 //                 }
 //             }
@@ -202,71 +222,69 @@ pipeline {
 
 //         stage('Docker Build') {
 //             steps {
-//                bat "docker build -t app:${IMAGE_TAG} -f ./<path>/Dockerfile ."
+//                 // build image and tag with local tag
+//                 bat "docker build -t app:${IMAGE_TAG} -f Dockerfile ."
 //             }
 //         }
 
-//         stage('Trivy Scan') {
-//             steps {
-//                 bat "trivy image app:${IMAGE_TAG}"
-//             }
-//         }
+//         stage('Trivy Scan (image)') {
+//       steps {
+//         // Run trivy as docker container; fail build on HIGH/CRITICAL
+//         bat '''
+//           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --exit-code 1 --severity CRITICAL,HIGH ${ECR_IMAGE} || \
+//           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --exit-code 0 --severity CRITICAL,HIGH ${ECR_IMAGE}
+//         '''
+//         // Note: The first command exits 1 on findings; second ensures pipeline doesn't crash silently — adjust behavior as you want.
+//       }
+//     }
 
 //         stage('Push to ECR') {
 //             steps {
-//                 bat """
-//                     aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${ECR_REPO}
-//                     docker tag app:${IMAGE_TAG} ${ECR_REPO}:latest
-//                     docker push ${ECR_REPO}:latest
-//                 """
+//                 withCredentials([
+//                     [$class: 'AmazonWebServicesCredentialsBinding',
+//                      accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+//                      secretKeyVariable: 'AWS_SECRET_ACCESS_KEY',
+//                      credentialsId: 'aws-creds']
+//                 ]) {
+//                     script {
+//                         // login, tag with build-specific tag and with latest, then push both
+//                         bat """
+//                             aws ecr get-login-password --region ${env.AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${env.ECR_REPO}
+//                             docker tag app:${IMAGE_TAG} ${ECR_REPO}:${IMAGE_TAG}
+//                             docker push ${ECR_REPO}:${IMAGE_TAG}
+//                             rem also push latest (optional)
+//                             docker tag app:${IMAGE_TAG} ${ECR_REPO}:latest
+//                             docker push ${ECR_REPO}:latest
+//                         """
+//                     }
+//                 }
 //             }
 //         }
 
-//        stage('Deploy to Staging ECS') {
-//     steps {
-//         withCredentials([[
-//             $class: 'AmazonWebServicesCredentialsBinding',
-//             accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-//             secretKeyVariable: 'AWS_SECRET_ACCESS_KEY',
-//             credentialsId: 'aws-creds'
-//         ]]) {
-//             bat 'aws ecs update-service --cluster job-portal-cluster --service staging-service --force-new-deployment'
+//         stage('Deploy to Staging ECS') {
+//             steps {
+//                 withCredentials([
+//                     [$class: 'AmazonWebServicesCredentialsBinding',
+//                      accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+//                      secretKeyVariable: 'AWS_SECRET_ACCESS_KEY',
+//                      credentialsId: 'aws-creds']
+//                 ]) {
+//                     // This forces a new deployment; if taskdefinition uses :latest, ECS will pull latest image.
+//                     // Better: register new task definition referencing ${ECR_REPO}:${IMAGE_TAG} and update service to use the new revision.
+//                     bat """
+//                         aws ecs update-service --cluster job-portal-cluster --service staging-service --force-new-deployment --region ${env.AWS_DEFAULT_REGION}
+//                     """
+//                 }
+//             }
 //         }
 //     }
-// }
-
-//         stage('OWASP ZAP DAST') {
-//             steps {
-//                 bat '''
-//                     zap-cli start
-//                     zap-cli open-url http://staging-url
-//                     zap-cli quick-scan http://staging-url
-//                 '''
-//             }
-//         }
-
-//         stage('Deploy to Production ECS') {
-//             steps {
-//                 bat 'aws ecs update-service --cluster job-portal-cluster --service prod-service --force-new-deployment'
-//             }
-//         }
-
-//         stage('Fetch Secrets') {
-//             steps {
-//                 bat 'aws secretsmanager get-secret-value --secret-id my-secret-id'
-//             }
-//         }
-
-//     }
-    
 
 //     post {
-//         always {
-//             echo 'Pipeline finished.'
-//             cleanWs()
-//         }
-//         failure {
-//             echo 'Pipeline failed! Investigate logs and try again.'
-//         }
+//         success { echo "PIPELINE SUCCESS" }
+//         failure { echo "PIPELINE FAILED" }
+//         always { echo "Finished: ${currentBuild.fullDisplayName}" }
 //     }
 // }
+
+
+
