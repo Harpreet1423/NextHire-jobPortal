@@ -123,8 +123,10 @@ function Run-Trivy {
         return 3
     }
 
-    # Compose mount and run container
-    $workdirMount = "$ws:/workdir"
+    # IMPORTANT:
+    # On Windows PowerShell, constructing a string like "$ws:/workdir" may be parsed as $ws:
+    # so use $($ws) to force correct expansion.
+    $workdirMount = "$($ws):/workdir"
     Write-Host "Running trivy container; workspace mounted: $workdirMount"
 
     try {
@@ -238,6 +240,7 @@ exit 0
         always { echo "Finished: ${currentBuild.fullDisplayName}" }
     }
 }
+
 
 // pipeline {
 //     agent any
