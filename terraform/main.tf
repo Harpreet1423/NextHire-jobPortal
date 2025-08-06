@@ -27,7 +27,7 @@ data "aws_iam_role" "ecs_task_execution_role" {
 # --- New VPC + Networking Resources (if not already created) ---
 module "vpc" {
   source  = "terraform-aws-modules/vpc/aws"
-  version = "4.0.2"
+  version = "5.1.0"
 
   name = "job-portal-vpc"
   cidr = "10.0.0.0/16"
