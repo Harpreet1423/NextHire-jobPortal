@@ -1,0 +1,21 @@
+[
+  {
+    "name": "job-portal-container",
+    "image": "345376996795.dkr.ecr.us-east-1.amazonaws.com/job-portal:build-73",
+    "essential": true,
+    "portMappings": [
+      {
+        "containerPort": 5173,
+        "protocol": "tcp"
+      }
+    ],
+    "logConfiguration": {
+      "logDriver": "awslogs",
+      "options": {
+        "awslogs-group": "/ecs/job-portal-task",
+        "awslogs-region": "us-east-1",
+        "awslogs-stream-prefix": "ecs"
+      }
+    }
+  }
+]
