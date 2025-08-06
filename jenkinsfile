@@ -7,8 +7,8 @@ pipeline {
         IMAGE_TAG = "build-${BUILD_NUMBER}"
         SONAR_HOST_URL = 'http://localhost:9000'
         SONAR_PROJECT_KEY = 'NextHire-jobPortal'
-        SONAR_TOKEN = credentials('sonar-auth-token')
-        SNYK_TOKEN = credentials('SNYK_TOKEN')
+        // Don't bind SONAR_TOKEN or SNYK_TOKEN here as environment - we will use withCredentials explicitly
+        // SNYK_TOKEN = credentials('SNYK_TOKEN')
     }
 
     stages {
@@ -22,15 +22,19 @@ pipeline {
         stage('SonarQube Analysis') {
             steps {
                 withSonarQubeEnv('sonarqube') {
-                    script {
-                        def scannerHome = tool name: 'SonarScannerDefault', type: 'hudson.plugins.sonar.SonarRunnerInstallation'
-                        bat """
-                            "${scannerHome}\\bin\\sonar-scanner.bat" ^
-                            -Dsonar.projectKey=${env.SONAR_PROJECT_KEY} ^
-                            -Dsonar.sources=. ^
-                            -Dsonar.host.url=${env.SONAR_HOST_URL} ^
-                            -Dsonar.login=${env.SONAR_TOKEN}"
-                        """
+                    // bind token safely for bat
+                    withCredentials([string(credentialsId: 'sonar-auth-token', variable: 'SONAR_TOKEN')]) {
+                        script {
+                            def scannerHome = tool name: 'SonarScannerDefault', type: 'hudson.plugins.sonar.SonarRunnerInstallation'
+                            // Use sonar.token property (not sonar.login) and use %SONAR_TOKEN% inside Windows bat
+                            bat """
+                                "${scannerHome}\\bin\\sonar-scanner.bat" ^
+                                -Dsonar.projectKey=${env.SONAR_PROJECT_KEY} ^
+                                -Dsonar.sources=. ^
+                                -Dsonar.host.url=${env.SONAR_HOST_URL} ^
+                                -Dsonar.token=%SONAR_TOKEN%
+                            """
+                        }
                     }
                 }
             }
@@ -38,24 +42,28 @@ pipeline {
 
         stage('Snyk Security Scan') {
             steps {
-                bat 'npm install -g snyk'
-                bat 'snyk test --all-projects --ci'
-                bat 'snyk monitor --all-projects'
+                withCredentials([string(credentialsId: 'SNYK_TOKEN', variable: 'SNYK_TOKEN')]) {
+                    bat 'npm install -g snyk'
+                    // pass token via env var configured by withCredentials
+                    bat 'set SNYK_TOKEN=%SNYK_TOKEN% && snyk test --all-projects --ci'
+                    bat 'set SNYK_TOKEN=%SNYK_TOKEN% && snyk monitor --all-projects'
+                }
             }
         }
 
         stage('Terraform - Provision Infra') {
             steps {
-                withCredentials([[
-                    $class: 'AmazonWebServicesCredentialsBinding',
-                    accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                    secretKeyVariable: 'AWS_SECRET_ACCESS_KEY',
-                    credentialsId: 'aws-creds'
-                ]]) {
+                withCredentials([
+                    [$class: 'AmazonWebServicesCredentialsBinding',
+                     accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                     secretKeyVariable: 'AWS_SECRET_ACCESS_KEY',
+                     credentialsId: 'aws-creds']
+                ]) {
                     dir('terraform') {
                         bat 'terraform init -upgrade'
-                        bat 'terraform plan'
-                        bat 'terraform apply -auto-approve'
+                        // Do not import here. Do terraform plan & apply.
+                        bat 'terraform plan -out=tfplan'
+                        bat 'terraform apply -auto-approve tfplan'
                     }
                 }
             }
@@ -63,54 +71,58 @@ pipeline {
 
         stage('Docker Build') {
             steps {
-                // Replace <path> with actual path to your Dockerfile if needed, or use '.' if it's at root
+                // build image and tag with local tag
                 bat "docker build -t app:${IMAGE_TAG} -f Dockerfile ."
             }
         }
 
         stage('Push to ECR') {
             steps {
-                withCredentials([[
-                    $class: 'AmazonWebServicesCredentialsBinding',
-                    accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                    secretKeyVariable: 'AWS_SECRET_ACCESS_KEY',
-                    credentialsId: 'aws-creds'
-                ]]) {
-                    bat """
-                        aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${ECR_REPO}
-                        docker tag app:${IMAGE_TAG} ${ECR_REPO}:latest
-                        docker push ${ECR_REPO}:latest
-                    """
+                withCredentials([
+                    [$class: 'AmazonWebServicesCredentialsBinding',
+                     accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                     secretKeyVariable: 'AWS_SECRET_ACCESS_KEY',
+                     credentialsId: 'aws-creds']
+                ]) {
+                    script {
+                        // login, tag with build-specific tag and with latest, then push both
+                        bat """
+                            aws ecr get-login-password --region ${env.AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${env.ECR_REPO}
+                            docker tag app:${IMAGE_TAG} ${ECR_REPO}:${IMAGE_TAG}
+                            docker push ${ECR_REPO}:${IMAGE_TAG}
+                            rem also push latest (optional)
+                            docker tag app:${IMAGE_TAG} ${ECR_REPO}:latest
+                            docker push ${ECR_REPO}:latest
+                        """
+                    }
                 }
             }
         }
 
         stage('Deploy to Staging ECS') {
             steps {
-                withCredentials([[
-                    $class: 'AmazonWebServicesCredentialsBinding',
-                    accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                    secretKeyVariable: 'AWS_SECRET_ACCESS_KEY',
-                    credentialsId: 'aws-creds'
-                ]]) {
-                    bat 'aws ecs update-service --cluster job-portal-cluster --service staging-service --force-new-deployment'
+                withCredentials([
+                    [$class: 'AmazonWebServicesCredentialsBinding',
+                     accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                     secretKeyVariable: 'AWS_SECRET_ACCESS_KEY',
+                     credentialsId: 'aws-creds']
+                ]) {
+                    // This forces a new deployment; if taskdefinition uses :latest, ECS will pull latest image.
+                    // Better: register new task definition referencing ${ECR_REPO}:${IMAGE_TAG} and update service to use the new revision.
+                    bat """
+                        aws ecs update-service --cluster job-portal-cluster --service staging-service --force-new-deployment --region ${env.AWS_DEFAULT_REGION}
+                    """
                 }
             }
         }
-
     }
 
-       post {
-        always {
-            echo "PIPELINE SUCCESS"
-        }
-        failure {
-            echo "PIPELINE FAILED"
-        }
+    post {
+        success { echo "PIPELINE SUCCESS" }
+        failure { echo "PIPELINE FAILED" }
+        always { echo "Finished: ${currentBuild.fullDisplayName}" }
     }
 }
-
-
 
 
 

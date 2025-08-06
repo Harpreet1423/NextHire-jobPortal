@@ -11,32 +11,17 @@ resource "aws_ecr_repository" "job_portal" {
   }
 
   lifecycle {
-    prevent_destroy = true         # optional, protects against accidental deletion
-    ignore_changes  = [tags]       # only ignore tags, not everything!
+    prevent_destroy = true
+    ignore_changes  = [tags]
   }
 }
 
-resource "aws_ecs_cluster" "job_portal_cluster" {
-  name = "job-portal-cluster"
-}
-
-resource "aws_iam_role" "ecs_task_execution_role" {
+data "aws_iam_role" "ecs_task_execution_role" {
   name = "ecsTaskExecutionRole"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17",
-    Statement = [
-      {
-        Action    = "sts:AssumeRole",
-        Effect    = "Allow",
-        Principal = {
-          Service = "ecs-tasks.amazonaws.com"
-        }
-      }
-    ]
-  })
 }
 
+# Example usage (if needed): you can reference the role as:
+# data.aws_iam_role.ecs_task_execution_role.arn
 
 
 
