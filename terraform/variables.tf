@@ -21,3 +21,19 @@ variable "public_subnets" {
   type        = list(string)
   default     = ["10.0.1.0/24", "10.0.2.0/24"]
 }
+
+variable "ecr_repo" {
+  description = "ECR repository URL"
+  type        = string
+}
+
+variable "image_tag" {
+  description = "Tag for the Docker image"
+  type        = string
+  default     = "latest"
+}
+
+variable "ecs_task_execution_role_arn" {
+  description = "ARN of the ECS task execution role"
+  type        = string
+}

@@ -91,15 +91,15 @@ resource "aws_security_group" "lb_sg" {
 # SECURITY GROUP FOR ECS
 # ----------------------------
 resource "aws_security_group" "ecs_sg" {
-  name        = "ecs-sg"
+  name        = "ecs-tasks-sg"
   description = "Security group for ECS tasks"
   vpc_id      = module.vpc.vpc_id
 
   ingress {
-    from_port       = 80
-    to_port         = 80
-    protocol        = "tcp"
-    security_groups = [aws_security_group.lb_sg.id]
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
   egress {
@@ -113,6 +113,7 @@ resource "aws_security_group" "ecs_sg" {
     Name = "ecs-sg"
   }
 }
+
 
 # ----------------------------
 # APPLICATION LOAD BALANCER
@@ -150,7 +151,7 @@ resource "aws_lb_target_group" "job_portal_tg" {
 # ALB LISTENER
 # ----------------------------
 resource "aws_lb_listener" "http_listener" {
-  load_balancer_arn = aws_lb.job_portal_alb.arn
+ load_balancer_arn = aws_lb.job_portal_alb.arn
   port              = 80
   protocol          = "HTTP"
 
