@@ -5,7 +5,6 @@ provider "aws" {
 # ----------------------------
 # ECR REPO
 # ----------------------------
-
 resource "aws_ecr_repository" "job_portal" {
   name = "job-portal"
 
@@ -20,9 +19,8 @@ resource "aws_ecr_repository" "job_portal" {
 }
 
 # ----------------------------
-# cs_task_execution_role
+# IAM ROLE FOR ECS TASK EXECUTION
 # ----------------------------
-
 data "aws_iam_role" "ecs_task_execution_role" {
   name = "ecsTaskExecutionRole"
 }
@@ -31,7 +29,7 @@ data "aws_iam_role" "ecs_task_execution_role" {
 # VPC MODULE
 # ----------------------------
 module "vpc" {
-  source = "terraform-aws-modules/vpc/aws"
+  source  = "terraform-aws-modules/vpc/aws"
   version = "5.1.2"
 
   name = "job-portal-vpc"
@@ -47,7 +45,7 @@ module "vpc" {
   enable_dns_support     = true
 
   tags = {
-    Terraform = "true"
+    Terraform   = "true"
     Environment = "dev"
   }
 }
@@ -59,7 +57,6 @@ resource "aws_ecs_cluster" "job_portal_cluster" {
   name = "job-portal-cluster"
 }
 
-
 # ----------------------------
 # ECS TASK DEFINITION
 # ----------------------------
@@ -69,6 +66,7 @@ resource "aws_ecs_task_definition" "job_portal_task" {
   network_mode             = "awsvpc"
   cpu                      = "256"
   memory                   = "512"
+  execution_role_arn       = data.aws_iam_role.ecs_task_execution_role.arn
 
   container_definitions = jsonencode([{
     name         = "job-portal-container"
@@ -76,10 +74,10 @@ resource "aws_ecs_task_definition" "job_portal_task" {
     portMappings = [{
       containerPort = 80
       hostPort      = 80
+      protocol      = "tcp"
     }]
+    essential = true
   }])
-
-  execution_role_arn = data.aws_iam_role.ecs_task_execution_role.arn
 }
 
 # ----------------------------
@@ -136,7 +134,6 @@ resource "aws_security_group" "ecs_sg" {
   }
 }
 
-
 # ----------------------------
 # APPLICATION LOAD BALANCER
 # ----------------------------
@@ -173,7 +170,7 @@ resource "aws_lb_target_group" "job_portal_tg" {
 # ALB LISTENER
 # ----------------------------
 resource "aws_lb_listener" "http_listener" {
- load_balancer_arn = aws_lb.job_portal_alb.arn
+  load_balancer_arn = aws_lb.job_portal_alb.arn
   port              = 80
   protocol          = "HTTP"
 
