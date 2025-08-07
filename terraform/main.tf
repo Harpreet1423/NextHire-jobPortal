@@ -8,7 +8,17 @@ provider "aws" {
 
 resource "aws_ecr_repository" "job_portal" {
   name = "job-portal"
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+
+  tags = {
+    Name        = "job-portal-ecr"
+    Environment = "dev"
+  }
 }
+
 # ----------------------------
 # cs_task_execution_role
 # ----------------------------
