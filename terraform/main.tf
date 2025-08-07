@@ -5,13 +5,14 @@ provider "aws" {
 resource "aws_ecr_repository" "job_portal" {
   name                 = "job-portal"
   image_tag_mutability = "MUTABLE"
+  force_delete         = true  # ✅ Ensures ECR repo can be destroyed cleanly
 
   image_scanning_configuration {
     scan_on_push = true
   }
 
   lifecycle {
-    prevent_destroy = true
+    prevent_destroy = false    # ✅ Optional: false is safer when using force_delete
     ignore_changes  = [tags]
   }
 }
@@ -24,7 +25,6 @@ data "aws_iam_role" "ecs_task_execution_role" {
   name = "ecsTaskExecutionRole"
 }
 
-# --- New VPC + Networking Resources (if not already created) ---
 module "vpc" {
   source  = "terraform-aws-modules/vpc/aws"
   version = "5.1.0"
@@ -37,17 +37,9 @@ module "vpc" {
   enable_dns_hostnames = true
 
   tags = {
-    Terraform = "true"
+    Terraform   = "true"
     Environment = "staging"
   }
-}
-
-resource "aws_lb" "job_portal_alb" {
-  name               = "job-portal-alb"
-  internal           = false
-  load_balancer_type = "application"
-  security_groups    = [aws_security_group.lb_sg.id]
-  subnets            = module.vpc.public_subnets
 }
 
 resource "aws_security_group" "lb_sg" {
@@ -68,6 +60,14 @@ resource "aws_security_group" "lb_sg" {
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
+}
+
+resource "aws_lb" "job_portal_alb" {
+  name               = "job-portal-alb"
+  internal           = false
+  load_balancer_type = "application"
+  security_groups    = [aws_security_group.lb_sg.id]
+  subnets            = module.vpc.public_subnets
 }
 
 resource "aws_lb_target_group" "job_portal_tg" {
@@ -97,7 +97,6 @@ resource "aws_lb_listener" "http" {
     target_group_arn = aws_lb_target_group.job_portal_tg.arn
   }
 }
-
 
 # provider "aws" {
 #   region = var.aws_region
