@@ -3,6 +3,21 @@ provider "aws" {
 }
 
 # ----------------------------
+# ECR REPO
+# ----------------------------
+
+resource "aws_ecr_repository" "job_portal" {
+  name = "job-portal"
+}
+# ----------------------------
+# cs_task_execution_role
+# ----------------------------
+
+data "aws_iam_role" "ecs_task_execution_role" {
+  name = "ecsTaskExecutionRole"
+}
+
+# ----------------------------
 # VPC MODULE
 # ----------------------------
 module "vpc" {
@@ -34,6 +49,7 @@ resource "aws_ecs_cluster" "job_portal_cluster" {
   name = "job-portal-cluster"
 }
 
+
 # ----------------------------
 # ECS TASK DEFINITION
 # ----------------------------
@@ -44,20 +60,16 @@ resource "aws_ecs_task_definition" "job_portal_task" {
   cpu                      = "256"
   memory                   = "512"
 
-  container_definitions = jsonencode([
-    {
-      name      = "job-portal-container"
-      image     = "${var.ecr_repo}:${var.image_tag}"
-      portMappings = [
-        {
-          containerPort = 80
-          hostPort      = 80
-        }
-      ]
-    }
-  ])
+  container_definitions = jsonencode([{
+    name         = "job-portal-container"
+    image        = "${aws_ecr_repository.job_portal.repository_url}:latest"
+    portMappings = [{
+      containerPort = 80
+      hostPort      = 80
+    }]
+  }])
 
-  execution_role_arn = var.ecs_task_execution_role_arn
+  execution_role_arn = data.aws_iam_role.ecs_task_execution_role.arn
 }
 
 # ----------------------------
