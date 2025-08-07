@@ -162,9 +162,9 @@ resource "aws_ecs_service" "job_portal_service" {
   launch_type     = "FARGATE"
 
   network_configuration {
-    subnets         = module.vpc.public_subnets
-    security_groups = [aws_security_group.lb_sg.id]
+    subnets         = var.public_subnets
     assign_public_ip = true
+    security_groups = [aws_security_group.ecs_sg.id]
   }
 
   load_balancer {
@@ -173,8 +173,11 @@ resource "aws_ecs_service" "job_portal_service" {
     container_port   = 80
   }
 
-  depends_on = [aws_lb_listener.http]
+  depends_on = [
+    aws_lb_listener.http_listener
+  ]
 }
+
 
 
 
