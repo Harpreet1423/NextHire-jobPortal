@@ -58,10 +58,10 @@ module "vpc" {
 # ─────────────────────────────────────────────────────────
 # Security Group for ALB
 # ─────────────────────────────────────────────────────────
-resource "aws_security_group" "lb_sg" {
-  name        = "job-portal-alb-sg"
-  description = "Allow HTTP"
-  vpc_id      = module.vpc.vpc_id
+resource "aws_security_group" "ecs_sg" {
+  name        = "ecs-sg"
+  description = "Security group for ECS service"
+  vpc_id      = aws_vpc.main.id
 
   ingress {
     from_port   = 80
@@ -76,7 +76,12 @@ resource "aws_security_group" "lb_sg" {
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
+
+  tags = {
+    Name = "ecs-sg"
+  }
 }
+
 
 # ─────────────────────────────────────────────────────────
 # Application Load Balancer (ALB)
@@ -114,16 +119,21 @@ resource "aws_lb_target_group" "job_portal_tg" {
 # ─────────────────────────────────────────────────────────
 # ALB Listener
 # ─────────────────────────────────────────────────────────
-resource "aws_lb_listener" "http" {
-  load_balancer_arn = aws_lb.job_portal_alb.arn
+resource "aws_lb_listener" "http_listener" {
+  load_balancer_arn = aws_lb.app_lb.arn
   port              = 80
   protocol          = "HTTP"
 
   default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.job_portal_tg.arn
+    type             = "fixed-response"
+    fixed_response {
+      content_type = "text/plain"
+      message_body = "Default response"
+      status_code  = "200"
+    }
   }
 }
+
 
 # ─────────────────────────────────────────────────────────
 # ECS Task Definition
