@@ -10,10 +10,10 @@ resource "aws_ecr_repository" "job_portal" {
     scan_on_push = true
   }
 
-  lifecycle {
-    prevent_destroy = true
-    ignore_changes  = [tags]
-  }
+  # lifecycle {
+  #   prevent_destroy = true
+  #   ignore_changes  = [tags]
+  # }
 }
 
 resource "aws_ecs_cluster" "job_portal_cluster" {
