@@ -93,10 +93,11 @@ resource "aws_lb" "job_portal_alb" {
 # Target Group
 # ─────────────────────────────────────────────────────────
 resource "aws_lb_target_group" "job_portal_tg" {
-  name     = "job-portal-tg"
-  port     = 80
-  protocol = "HTTP"
-  vpc_id   = module.vpc.vpc_id
+  name        = "job-portal-tg"
+  port        = 80
+  protocol    = "HTTP"
+  vpc_id      = module.vpc.vpc_id
+  target_type = "ip"  # <-- THIS FIXES THE ERROR
 
   health_check {
     path                = "/"
@@ -108,6 +109,7 @@ resource "aws_lb_target_group" "job_portal_tg" {
     unhealthy_threshold = 2
   }
 }
+
 
 # ─────────────────────────────────────────────────────────
 # ALB Listener
