@@ -14,7 +14,7 @@ RUN npm config set registry https://registry.npmjs.org/ && \
     npm install
 
 COPY . .
-RUN npm run build --verbose
+RUN npm run build 
 
 # ---- Serve Stage ----
 FROM nginx:alpine
