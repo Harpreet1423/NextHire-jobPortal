@@ -259,6 +259,7 @@ pipeline {
         }
     }
 }
+    }
 
     post {
         success { echo "PIPELINE SUCCESS" }
