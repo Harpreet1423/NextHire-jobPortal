@@ -4,6 +4,13 @@ FROM node:22-alpine AS build
 WORKDIR /app
 
 COPY package*.json ./
+
+# Configure npm for better network handling
+RUN npm config set registry https://registry.npmjs.org/ && \
+    npm config set fetch-retries 10 && \
+    npm config set fetch-retry-factor 2 && \
+    npm config set fetch-retry-mintimeout 10000 && \
+    npm config set fetch-retry-maxtimeout 60000 && \
 RUN npm install
 
 COPY . .
