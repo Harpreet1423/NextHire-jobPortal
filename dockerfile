@@ -11,7 +11,7 @@ RUN npm config set registry https://registry.npmjs.org/ && \
     npm config set fetch-retry-factor 2 && \
     npm config set fetch-retry-mintimeout 10000 && \
     npm config set fetch-retry-maxtimeout 60000 && \
-RUN npm install
+    npm install
 
 COPY . .
 RUN npm run build --verbose
@@ -19,7 +19,7 @@ RUN npm run build --verbose
 # ---- Serve Stage ----
 FROM nginx:alpine
 
-# Copy custom Nginx config (your line here 👇)
+# Copy custom Nginx config
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 # Copy the built React app to Nginx's web root
