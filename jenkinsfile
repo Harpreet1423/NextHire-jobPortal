@@ -227,26 +227,38 @@ pipeline {
         
 
 
-        stage('Deploy to Staging ECS') {
-            steps {
-                withCredentials([
-                    [$class: 'AmazonWebServicesCredentialsBinding',
-                     accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                     secretKeyVariable: 'AWS_SECRET_ACCESS_KEY',
-                     credentialsId: 'aws-creds']
-                ]) {
-                    script {
-                        def rc = bat(script: "aws ecs update-service --cluster job-portal-cluster --service staging-service --force-new-deployment --region ${env.AWS_DEFAULT_REGION}", returnStatus: true)
-                        if (rc != 0) {
-                          error "ECS update-service failed with exit code ${rc}"
-                        } else {
-                          echo "ECS update-service triggered successfully"
-                        }
+       stage('Deploy to Production ECS') {
+    steps {
+        withCredentials([
+            [$class: 'AmazonWebServicesCredentialsBinding',
+             accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+             secretKeyVariable: 'AWS_SECRET_ACCESS_KEY',
+             credentialsId: 'aws-creds']
+        ]) {
+            script {
+                echo "Deploying to ECS cluster: job-portal-cluster, service: job-portal-service"
+                
+                def rc = bat(script: "aws ecs update-service --cluster job-portal-cluster --service job-portal-service --force-new-deployment --region ${env.AWS_DEFAULT_REGION}", returnStatus: true)
+                
+                if (rc != 0) {
+                    error "ECS update-service failed with exit code ${rc}"
+                } else {
+                    echo "ECS update-service triggered successfully"
+                    
+                    // Optional: Wait for deployment to complete
+                    echo "Waiting for deployment to stabilize..."
+                    def waitRc = bat(script: "aws ecs wait services-stable --cluster job-portal-cluster --services job-portal-service --region ${env.AWS_DEFAULT_REGION}", returnStatus: true)
+                    
+                    if (waitRc == 0) {
+                        echo "Deployment completed successfully"
+                    } else {
+                        echo "Warning: Deployment may still be in progress (wait command timed out or failed)"
                     }
                 }
             }
         }
     }
+}
 
     post {
         success { echo "PIPELINE SUCCESS" }
