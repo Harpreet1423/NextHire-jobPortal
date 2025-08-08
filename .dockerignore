@@ -55,7 +55,7 @@ docs/
 # Config files that shouldn't be in container
 sonar-project.properties
 eslint.config.js
-vite.config.js
+
 
 # Logs
 *.log
