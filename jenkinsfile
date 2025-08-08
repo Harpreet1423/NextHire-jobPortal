@@ -9,7 +9,11 @@ pipeline {
         SONAR_HOST_URL = 'http://localhost:9000'
         SONAR_PROJECT_KEY = 'NextHire-jobPortal'
         TRIVY_MODE = 'blocking'
-        // Do not put secrets here; we use withCredentials where needed
+         STAGING_CLUSTER = 'job-portal-staging-cluster'
+        STAGING_SERVICE = 'job-portal-staging-service'
+        PRODUCTION_CLUSTER = 'job-portal-cluster'
+        PRODUCTION_SERVICE = 'job-portal-service'
+        
     }
 
     stages {
@@ -224,8 +228,40 @@ pipeline {
             }
         }
 
-        
 
+        stage('Deploy to Staging') {
+    steps {
+        withCredentials([
+            [$class: 'AmazonWebServicesCredentialsBinding',
+             accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+             secretKeyVariable: 'AWS_SECRET_ACCESS_KEY',
+             credentialsId: 'aws-creds']
+        ]) {
+            script {
+                echo "🚀 Deploying to STAGING environment..."
+                echo "Cluster: ${STAGING_CLUSTER}, Service: ${STAGING_SERVICE}"
+                
+                // Simple force deployment - ECS will pull the latest image with the same tag
+                def rc = bat(script: "aws ecs update-service --cluster ${STAGING_CLUSTER} --service ${STAGING_SERVICE} --force-new-deployment --region ${env.AWS_DEFAULT_REGION}", returnStatus: true)
+                
+                if (rc != 0) {
+                    error "Staging deployment failed with exit code ${rc}"
+                } else {
+                    echo "✅ Staging deployment initiated successfully"
+                    
+                    // Optional: Wait for deployment
+                    echo "Waiting for staging deployment to stabilize..."
+                    def waitRc = bat(script: "aws ecs wait services-stable --cluster ${STAGING_CLUSTER} --services ${STAGING_SERVICE} --region ${env.AWS_DEFAULT_REGION}", returnStatus: true)
+                    if (waitRc == 0) {
+                        echo "✅ Staging deployment completed successfully"
+                    } else {
+                        echo "⚠️ Staging deployment may still be in progress"
+                    }
+                }
+            }
+        }
+    }
+}
 
        stage('Deploy to Production ECS') {
     steps {
