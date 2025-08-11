@@ -274,7 +274,7 @@ pipeline {
             script {
                 echo "Deploying to ECS cluster: job-portal-cluster, service: job-portal-service"
                 
-                def rc = bat(script: "aws ecs update-service --cluster job-portal-cluster --service job-portal-service --force-new-deployment --region ${env.AWS_DEFAULT_REGION}", returnStatus: true)
+                def rc = bat(script: "aws ecs update-service --cluster job-portal-production-cluster --service job-portal-service--force-new-deployment --region ${env.AWS_DEFAULT_REGION}", returnStatus: true)
                 
                 if (rc != 0) {
                     error "ECS update-service failed with exit code ${rc}"
