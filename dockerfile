@@ -26,7 +26,10 @@ COPY nginx.conf /etc/nginx/conf.d/default.conf
 # Copy the built React app to Nginx's web root
 COPY --from=build /app/dist /usr/share/nginx/html
 
+# Set environment variable for port
+ENV PORT=80
+
 # Expose port 80 (standard for HTTP)
 EXPOSE 80
 
-CMD ["nginx", "-g", "daemon off;"]
+CMD ["npm", "run", "preview", "--", "--host", "0.0.0.0", "--port", "80"]

@@ -24,4 +24,13 @@ export default defineConfig({
       },
     },
   },
+
+  server: {
+    host: "0.0.0.0", // Allow external connections
+    port: parseInt(process.env.PORT) || 80,
+  },
+  preview: {
+    host: "0.0.0.0",
+    port: parseInt(process.env.PORT) || 80,
+  },
 });
