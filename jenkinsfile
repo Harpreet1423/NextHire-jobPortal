@@ -272,9 +272,9 @@ pipeline {
              credentialsId: 'aws-creds']
         ]) {
             script {
-                echo "Deploying to ECS cluster: job-portal-cluster, service: job-portal-service"
+                echo "Deploying to ECS cluster: job-portal-production-cluster, service: job-portal-production-service"
                 
-                def rc = bat(script: "aws ecs update-service --cluster job-portal-production-cluster --service job-portal-service--force-new-deployment --region ${env.AWS_DEFAULT_REGION}", returnStatus: true)
+                def rc = bat(script: "aws ecs update-service --cluster job-portal-production-cluster --service job-portal-production-service --force-new-deployment --region ${env.AWS_DEFAULT_REGION}", returnStatus: true)
                 
                 if (rc != 0) {
                     error "ECS update-service failed with exit code ${rc}"
@@ -283,10 +283,10 @@ pipeline {
                     
                     // Optional: Wait for deployment to complete
                     echo "Waiting for deployment to stabilize..."
-                    def waitRc = bat(script: "aws ecs wait services-stable --cluster job-portal-cluster --services job-portal-service --region ${env.AWS_DEFAULT_REGION}", returnStatus: true)
+                    def waitRc = bat(script: "aws ecs wait services-stable --cluster job-portal-production-cluster --services job-portal-production-service --region ${env.AWS_DEFAULT_REGION}", returnStatus: true)
                     
                     if (waitRc == 0) {
-                        echo "Deployment completed successfully"
+                        echo "✅ Production deployment completed successfully"
                     } else {
                         echo "Warning: Deployment may still be in progress (wait command timed out or failed)"
                     }
@@ -295,7 +295,6 @@ pipeline {
         }
     }
 }
-    }
 
     post {
         success { echo "PIPELINE SUCCESS" }
