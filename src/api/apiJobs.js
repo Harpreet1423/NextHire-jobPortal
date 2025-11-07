@@ -1,6 +1,8 @@
+
+
 import supabaseClient from "@/utils/supabase";
 
-// Fetch Jobs
+//Fetch Jobs
 export async function getJobs(token, { location, company_id, searchQuery }) {
   const supabase = await supabaseClient(token);
   let query = supabase
@@ -44,7 +46,6 @@ export async function getSavedJobs(token) {
   return data;
 }
 
-
 // Read single job
 export async function getSingleJob(token, { job_id }) {
   const supabase = await supabaseClient(token);
@@ -66,23 +67,53 @@ export async function getSingleJob(token, { job_id }) {
   return data;
 }
 
-// - Add / Remove Saved Job
-export async function saveJob(token, { alreadySaved }, saveData) {
+// - Add / Remove Saved Job (FIXED VERSION)
+export async function saveJob(token, options, saveData) {
   const supabase = await supabaseClient(token);
 
-  if (alreadySaved) {
+  // useFetch passes data as third parameter, so use that if available
+  const data = saveData || options;
+
+  // Validate input data
+  if (!data?.job_id || !data?.user_id) {
+    console.error("Missing required data:", {
+      job_id: data?.job_id,
+      user_id: data?.user_id,
+      receivedOptions: options,
+      receivedSaveData: saveData,
+    });
+    throw new Error("job_id and user_id are required");
+  }
+
+  console.log("Attempting to save/unsave job with data:", data);
+
+  // First, check if the job is already saved
+  const { data: existingSave, error: checkError } = await supabase
+    .from("saved_jobs")
+    .select("id")
+    .eq("job_id", saveData.job_id)
+    .eq("user_id", saveData.user_id)
+    .maybeSingle();
+
+  if (checkError) {
+    console.error("Error checking saved status:", checkError);
+    return null;
+  }
+
+  if (existingSave) {
     // If the job is already saved, remove it
     const { data, error: deleteError } = await supabase
       .from("saved_jobs")
       .delete()
-      .eq("job_id", saveData.job_id);
+      .eq("job_id", saveData.job_id)
+      .eq("user_id", saveData.user_id);
 
     if (deleteError) {
       console.error("Error removing saved job:", deleteError);
-      return data;
+      return null;
     }
 
-    return data;
+    return { message: "Job unsaved successfully" };
   } else {
     // If the job is not saved, add it to saved jobs
     const { data, error: insertError } = await supabase
@@ -92,7 +123,7 @@ export async function saveJob(token, { alreadySaved }, saveData) {
 
     if (insertError) {
       console.error("Error saving job:", insertError);
-      return data;
+      return null;
     }
 
     return data;
@@ -145,7 +176,7 @@ export async function deleteJob(token, { job_id }) {
 
   if (deleteError) {
     console.error("Error deleting job:", deleteError);
-    return data;
+    return null;
   }
 
   return data;
@@ -167,5 +198,3 @@ export async function addNewJob(token, _, jobData) {
 
   return data;
 }
-
-

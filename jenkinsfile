@@ -302,5 +302,3 @@ pipeline {
         always { echo "Finished: ${currentBuild.fullDisplayName}" }
     }
 }
-
-
