@@ -72,7 +72,7 @@ pipeline {
         //     }
         // }
 
-        stage('Terraform - Provision Infra') {
+       stage('Terraform - Provision Infra') {
     steps {
         withCredentials([
             [$class: 'AmazonWebServicesCredentialsBinding',
@@ -83,10 +83,14 @@ pipeline {
             dir('terraform') {
                 bat 'terraform init -upgrade'
                 
-                // Import existing IAM role if it exists
-                bat '''
-                    terraform import aws_iam_role.ecs_task_execution_role job-portal-ecs-execution-role 2>nul || echo "Role import skipped - may already be in state"
-                '''
+                // Import with proper error handling
+                script {
+                    def importStatus = bat(
+                        script: '@echo off & terraform import aws_iam_role.ecs_task_execution_role job-portal-ecs-execution-role',
+                        returnStatus: true
+                    )
+                    echo "Import status: ${importStatus}"
+                }
                 
                 bat 'terraform plan -out=tfplan'
                 bat 'terraform apply -auto-approve tfplan'
