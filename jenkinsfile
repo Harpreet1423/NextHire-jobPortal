@@ -55,22 +55,45 @@ pipeline {
         //     }
         // }
 
+        // stage('Terraform - Provision Infra') {
+        //     steps {
+        //         withCredentials([
+        //             [$class: 'AmazonWebServicesCredentialsBinding',
+        //              accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+        //              secretKeyVariable: 'AWS_SECRET_ACCESS_KEY',
+        //              credentialsId: 'aws-creds']
+        //         ]) {
+        //             dir('terraform') {
+        //                 bat 'terraform init -upgrade'
+        //                 bat 'terraform plan -out=tfplan'
+        //                 bat 'terraform apply -auto-approve tfplan'
+        //             }
+        //         }
+        //     }
+        // }
+
         stage('Terraform - Provision Infra') {
-            steps {
-                withCredentials([
-                    [$class: 'AmazonWebServicesCredentialsBinding',
-                     accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                     secretKeyVariable: 'AWS_SECRET_ACCESS_KEY',
-                     credentialsId: 'aws-creds']
-                ]) {
-                    dir('terraform') {
-                        bat 'terraform init -upgrade'
-                        bat 'terraform plan -out=tfplan'
-                        bat 'terraform apply -auto-approve tfplan'
-                    }
-                }
+    steps {
+        withCredentials([
+            [$class: 'AmazonWebServicesCredentialsBinding',
+             accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+             secretKeyVariable: 'AWS_SECRET_ACCESS_KEY',
+             credentialsId: 'aws-creds']
+        ]) {
+            dir('terraform') {
+                bat 'terraform init -upgrade'
+                
+                // Import existing IAM role if it exists
+                bat '''
+                    terraform import aws_iam_role.ecs_task_execution_role job-portal-ecs-execution-role 2>nul || echo "Role import skipped - may already be in state"
+                '''
+                
+                bat 'terraform plan -out=tfplan'
+                bat 'terraform apply -auto-approve tfplan'
             }
         }
+    }
+}
 
         stage('Docker Build') {
             steps {
